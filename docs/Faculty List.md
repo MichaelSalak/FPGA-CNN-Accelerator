@@ -1,0 +1,5 @@
+**Ajay Joshi**  
+	Professor Joshi’s research involves optimizing hardware to perform a particular task efficiently, which is exactly what the FPGA based CNN accelerator is intended to do. His work on “FAB: An FPGA-based Accelerator for Bootstrappable Fully Homomorphic Encryption” is closer to this idea than some of his GPU projects, as it directly involves FPGA acceleration. I would ask Professor Joshi, “How closely should we reproduce TFLite's quantization arithmetic? Is bit exact agreement a reasonable goal, or is small numerical deviation acceptable if classification accuracy is preserved?”.
+
+**Rabia Yazicigil**  
+	Professor Yazicigil’s research involves designing energy efficient systems, which closely aligns with the FPGA based CNN accelerator’s goal of being low power. Her work on “Power-Efficient Sampling” involves minimizing power consumption for ADC sampling, which although is not directly related to the CNN accelerator project, reflects the core idea of designing systems to consume minimal power. I would ask Professor Yazicigil, “How do you determine a balance between throughput and power consumption?”.
