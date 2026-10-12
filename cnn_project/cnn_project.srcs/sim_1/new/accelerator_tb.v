@@ -24,13 +24,11 @@ module conv1x1_small_tb();
     reg clk = 0;
     reg rst = 1;
     reg start = 0;
-    wire signed [31:0] result;
     wire done;
 
     conv1x1_small dut(.clk(clk),
                       .rst(rst),
                       .start(start),
-                      .result(result),
                       .done(done));
 
     always #5 clk = ~clk;
