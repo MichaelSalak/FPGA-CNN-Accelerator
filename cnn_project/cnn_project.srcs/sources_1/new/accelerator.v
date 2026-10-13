@@ -28,9 +28,6 @@
 
 
 
-
-
-
 /*
 3 CONV_2D inputs: [111 42 77] outputs: [112]
 
@@ -43,135 +40,133 @@ Tensor	Shape	         Meaning
 
 
 
+module top(input clk, rst, start, output done);
+    wire input_r_en, output_w_en;
+    wire [4:0] input_addr, output_addr;      // 2x2x8 for now = 32
+    wire signed [7:0] input_data, output_data;
+    
+    wire weight_r_en;
+    wire [5:0] weight_addr;     // 64 weights for now
+    wire signed [7:0] weight_data;
+    
+    wire bias_r_en;
+    wire [2:0] bias_addr;       // 8 bias values for now
+    wire signed [31:0] bias_data;      // 32 bit bias values (not INT8)
+
+    conv1x1_small conv(.clk(clk),
+                       .rst(rst),
+                       .start(start),
+                       .input_addr(input_addr),
+                       .input_data(input_data),
+                       .weight_addr(weight_addr),
+                       .weight_data(weight_data),
+                       .bias_addr(bias_addr),
+                       .bias_data(bias_data),
+                       .output_addr(output_addr),
+                       .output_data(output_data),
+                       .input_r_en(input_r_en),
+                       .output_r_en(output_r_en),
+                       .weight_r_en(weights_r_en),
+                       .bias_r_en(bias_r_en),
+                       .done(done));
+                    
+    // initial input buffer: loads data from file for now    
+    // not using dual port functionality yet           
+    activation_mem #(.DATA_WIDTH(8),
+                     .COUNT(32),
+                     .INIT_FILE("input_2x2x8.mem"))
+                 am0(.clk(clk), 
+                     .w_en(0),
+                     .r_en(input_r_en),
+                     .w_addr(0),
+                     .r_addr(input_addr),
+                     .w_data(0),
+                     .r_data(input_data));
+
+    // initial output buffer: does not use file parameter
+    // not using dual port functionality yet           
+    activation_mem #(.DATA_WIDTH(8),
+                     .COUNT(32))
+                 am1(.clk(clk), 
+                     .w_en(output_w_en),
+                     .r_en(0),
+                     .w_addr(output_addr),
+                     .r_addr(0),
+                     .w_data(output_data),
+                     .r_data(0));
+
+    // currently 64 example weights
+    weight_mem #(.COUNT(64),
+                 .INIT_FILE("weights_8x8.mem"))
+              wm(.clk(clk),
+                 .r_en(weight_r_en),
+                 .addr(weight_addr),
+                 .data_out(weight_data));
+
+    // currently 8 example bias values
+    bias_mem #(.COUNT(8),
+               .INIT_FILE("bias_8.mem"))
+            bm(.clk(clk),
+               .r_en(bias_r_en),
+               .addr(bias_addr),
+               .data_out(bias_data));
+
+endmodule
+
+
+
+
+
 module conv1x1_small(input clk, rst, start,
+                     input [4:0] input_addr,
+                     input [7:0] input_data,
+                     input [5:0] weight_addr,
+                     input [7:0] weight_data,
+                     input [2:0] bias_addr,
+                     input [31:0] bias_data,
+                     output reg [4:0] output_addr,
+                     output reg [7:0] output_data,
+                     output reg input_r_en,
+                     output reg output_w_en,
+                     output reg weight_r_en, bias_r_en,
                      output reg done
 );
+
+
+
+
+
+    /*  for requantization + zero point 
+ 
+// Layer quantization parameters
+input wire signed [7:0] input_zero_point,
+input wire signed [7:0] output_zero_point,
+
+// Per-output-channel requantization parameters
+output wire [2:0] quant_addr,
+input wire signed [31:0] quant_multiplier,
+input wire signed [7:0] quant_shift*/
+
+
+
+
+
+
+
+
     // fixed dimensions for now
-    reg signed [7:0] inputs [0:7];      // 8 8-bit input vlaues
-    reg signed [7:0] weight_mem [0:63]; // 64 8-bit weight values
-    reg signed [31:0] bias_mem [0:7];   // 8 32-bit bias values
+    
     reg signed [31:0] acc;
     reg [2:0] in_ch, out_ch;   // input and output channels for indexing input/output vector
     reg [2:0] state;
-   
-    // input channel handles values 0-7, output channel handles which set of 8 values to use
-    wire [5:0] weight_addr = {out_ch, in_ch};   
-    
-    reg signed [31:0] result [0:7]; // make result internal to allow for array formatting
-    
-    //wire signed [7:0] weights = weight_mem[weight_addr];
 
     // states
     localparam IDLE = 3'd0,
                INIT = 3'd1,
                MAC = 3'd2,
-               //STORE = 3'd3,
                NEXT = 3'd3,
                DONE = 3'd4;
 
-
-
-    // hardcoded example input and weight values
-    initial begin
-        inputs[0] =  2;  
-        inputs[1] = -1;  
-        inputs[2] =  3; 
-        inputs[3] =  4; 
-        inputs[4] =  0;  
-        inputs[5] = -2;  
-        inputs[6] =  1;  
-        inputs[7] =  5;  
-        
-        // Output channel 0
-        weight_mem[0] =  1;
-        weight_mem[1] =  2;
-        weight_mem[2] = -1;
-        weight_mem[3] =  1;
-        weight_mem[4] =  3;
-        weight_mem[5] = -2;
-        weight_mem[6] =  2;
-        weight_mem[7] = -1;
-    
-        // Output channel 1
-        weight_mem[8]  =  2;
-        weight_mem[9]  = -1;
-        weight_mem[10] =  1;
-        weight_mem[11] =  0;
-        weight_mem[12] = -2;
-        weight_mem[13] =  1;
-        weight_mem[14] =  3;
-        weight_mem[15] = -1;
-    
-        // Output channel 2
-        weight_mem[16] = -1;
-        weight_mem[17] =  3;
-        weight_mem[18] =  2;
-        weight_mem[19] = -2;
-        weight_mem[20] =  1;
-        weight_mem[21] =  0;
-        weight_mem[22] = -1;
-        weight_mem[23] =  2;
-    
-        // Output channel 3
-        weight_mem[24] =  3;
-        weight_mem[25] =  1;
-        weight_mem[26] = -2;
-        weight_mem[27] =  2;
-        weight_mem[28] = -1;
-        weight_mem[29] =  1;
-        weight_mem[30] =  0;
-        weight_mem[31] = -3;
-    
-        // Output channel 4
-        weight_mem[32] =  1;
-        weight_mem[33] = -2;
-        weight_mem[34] =  3;
-        weight_mem[35] =  0;
-        weight_mem[36] =  2;
-        weight_mem[37] = -1;
-        weight_mem[38] =  1;
-        weight_mem[39] =  2;
-    
-        // Output channel 5
-        weight_mem[40] = -2;
-        weight_mem[41] =  1;
-        weight_mem[42] =  0;
-        weight_mem[43] =  3;
-        weight_mem[44] = -1;
-        weight_mem[45] =  2;
-        weight_mem[46] = -3;
-        weight_mem[47] =  1;
-    
-        // Output channel 6
-        weight_mem[48] =  2;
-        weight_mem[49] =  0;
-        weight_mem[50] = -1;
-        weight_mem[51] =  1;
-        weight_mem[52] =  3;
-        weight_mem[53] = -2;
-        weight_mem[54] =  1;
-        weight_mem[55] = -1;
-    
-        // Output channel 7
-        weight_mem[56] = -1;
-        weight_mem[57] =  2;
-        weight_mem[58] =  1;
-        weight_mem[59] = -3;
-        weight_mem[60] =  0;
-        weight_mem[61] =  1;
-        weight_mem[62] = -2;
-        weight_mem[63] =  3;
-    
-        // Bias values
-        bias_mem[0] =  3;
-        bias_mem[1] = -2;
-        bias_mem[2] =  5;
-        bias_mem[3] =  1;
-        bias_mem[4] = -3;
-        bias_mem[5] =  4;
-        bias_mem[6] =  0;
-        bias_mem[7] = -1;
-    end
 
 
     // using 1 mac for now
@@ -227,6 +222,101 @@ module conv1x1_small(input clk, rst, start,
                 default: state <= IDLE;
             endcase
         end
+    end
+endmodule
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// dual port memory for activation values
+// ADDR_WIDTH: number of bits needed to encode address
+// DATA_WIDTH: number of bits needed to store data
+// COUNT: number of memory addresses 
+// INIT_FILE: file to load initial activations from - will likely change later 
+
+// ******* CURRENTLY USING 32 BIT DATA --> SWITCH TO 8 BITS AFTER REQUANTIZATION
+
+module activation_mem#(parameter DATA_WIDTH = 8,
+                       parameter COUNT = 32,
+                       parameter ADDR_WIDTH = $clog2(COUNT),
+                       parameter INIT_FILE = "")
+                      (input clk, w_en, r_en,
+                       input [ADDR_WIDTH-1:0] w_addr, r_addr,
+                       input [DATA_WIDTH-1:0] w_data,
+                       output reg [DATA_WIDTH-1:0] r_data
+);
+    
+    reg [DATA_WIDTH-1:0] mem [0:COUNT-1];
+
+    always @(posedge clk) begin
+        if(r_en)
+            r_data <= mem[r_addr];
+
+        if(w_en)
+            mem[w_addr] <= w_data;
+    end
+endmodule
+
+
+
+
+
+// memory for weight values: fixed in memory after synthesis
+module weight_mem#(parameter COUNT = 32,
+                   parameter ADDR_WIDTH = $clog2(COUNT),
+                   parameter INIT_FILE = "weights_8x8.mem")
+                  (input clk, r_en,
+                   input [ADDR_WIDTH-1:0] addr,
+                   output reg signed [7:0] data_out
+);
+
+    reg signed [7:0] mem [0:COUNT-1];   // data width is a fixed 8 bits 
+
+    initial begin
+        $readmemh(INIT_FILE, mem);  // load values from .mem file
+    end
+
+    // synchronous reads for BRAM
+    always @(posedge clk) begin
+        if(r_en)
+            data_out <= mem[addr];
+    end
+endmodule
+
+
+
+
+
+// memory for bias values: fixed in memory after synthesis
+module bias_mem#(parameter COUNT = 8,
+                 parameter ADDR_WIDTH = $clog2(COUNT),
+                 parameter INIT_FILE = "bias_8.mem")
+                (input clk, r_en,
+                 input [ADDR_WIDTH-1:0] addr,
+                 output reg signed [31:0] data_out
+);
+
+    reg signed [31:0] mem [0:COUNT-1];  // data width is a fixed 32 bits 
+
+    initial begin
+        $readmemh(INIT_FILE, mem);  // load values from .mem file
+    end
+
+    // synchronous reads for BRAM
+    always @(posedge clk) begin
+        if(r_en)
+            data_out <= mem[addr];
     end
 endmodule
 
