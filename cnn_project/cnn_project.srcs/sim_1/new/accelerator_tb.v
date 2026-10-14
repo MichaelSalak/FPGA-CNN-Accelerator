@@ -20,6 +20,38 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
+
+module conv_test_tb();
+    reg clk = 0;
+    reg rst = 1;
+    reg start = 0;
+    wire done;
+
+    top dut(.clk(clk),
+            .rst(rst),
+            .start(start),
+            .done(done));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        #20 rst = 0;
+
+        @(negedge clk);
+        start = 1;
+
+        @(negedge clk);
+        start = 0;
+
+        wait(done);
+
+        #30 $finish;
+    end
+endmodule
+
+
+
+
 module conv1x1_small_tb();
     reg clk = 0;
     reg rst = 1;
