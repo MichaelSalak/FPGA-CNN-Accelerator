@@ -92,7 +92,7 @@ module requantize(input clk, rst, start,
         $signed(zero_point_reg);
 
     always @(posedge clk) begin
-        if (rst) begin
+        if(rst) begin
             state <= IDLE;
             done <= 0;
             result <= 0;
@@ -107,8 +107,7 @@ module requantize(input clk, rst, start,
             product <= 0;
             high_result <= 0;
             scaled_result <= 0;
-        end
-        else begin
+        end else begin
             done <= 0;
 
             case(state)
@@ -191,8 +190,7 @@ module rounding_divide(input signed [31:0] value,
 
         if(exponent == 0) begin
             result = value;
-        end
-        else if(exponent <= 31) begin
+        end else if(exponent <= 31) begin
             mask = (32'd1 << exponent) - 1; // create mask to isolate remainder
             
             // apply mask to extract remainder: any non zero bits after shift/division

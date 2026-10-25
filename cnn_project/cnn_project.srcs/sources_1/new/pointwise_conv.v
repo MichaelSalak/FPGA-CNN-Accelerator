@@ -20,13 +20,19 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-// 1x1 pointwise convolution module     will update again later to support model
+// 1x1 pointwise convolution module     
+// will update again later to support dynamic addressing, dynamic requant inputs
 module pointwise_conv(input clk, rst, start,                     
                       input signed [7:0] input_data,
                       input signed [7:0] weight_data,
                       input signed [31:0] bias_data,    
                       input signed [31:0] multiplier,
                       input signed [7:0] shift,
+                      
+                      
+                      // NEED INPOUT ZERO POINT AS WELL:
+                      // corrected input = input - input zero point
+                      
                       input signed [7:0] output_zero_point, 
                       input signed [7:0] activation_min, activation_max,   
                      
@@ -136,7 +142,7 @@ module pointwise_conv(input clk, rst, start,
                 WAIT_BIAS: begin    // extra cycle needed to perform sync read
                     state <= INIT_ACC;
                 end
-                INIT_ACC: begin // init acc to read bias value, enable input + weight reads
+                INIT_ACC: begin // init acc to read bias value
                     acc <= bias_data;
                     bias_r_en <= 0; 
                     in_ch <= 0;
@@ -172,13 +178,11 @@ module pointwise_conv(input clk, rst, start,
                 REQUANT: begin  // quantize accumulator
                     requant_start <= 0;
                     
-                    // initialize output to zero point to then add result
-                    output_data <= output_zero_point;
-                    
                     // wait for requant to finish for now
                     // will likely pipeline to compute next MAC during requant
                     if(requant_done) begin
-                        output_data <= output_data + requant_result;
+                        // zero point handled during requantization
+                        output_data <= requant_result;  
                         state <= WRITE;
                     end
                 end
@@ -195,7 +199,7 @@ module pointwise_conv(input clk, rst, start,
                         if(pixel == 2'd3) begin
                             state <= DONE;  // done when on final output of final pixel
                         end else begin
-                            pixel <= pixel + 1; // increment pixel and reset output channel
+                            pixel <= pixel + 1;
                             state <= READ_BIAS;
                         end
                     end else begin

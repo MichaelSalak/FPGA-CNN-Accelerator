@@ -21,16 +21,28 @@
 
 
 
+
+
+
+
+
 module conv_test_tb();
     reg clk = 0;
     reg rst = 1;
     reg start = 0;
     wire done;
 
-    top dut(.clk(clk),
-            .rst(rst),
-            .start(start),
-            .done(done));
+    /*
+    top_pointwise dut(.clk(clk),
+                      .rst(rst),
+                      .start(start),
+                      .done(done));
+    */ 
+                      
+    top_depthwise dut(.clk(clk),
+                      .rst(rst),
+                      .start(start),
+                      .done(done));
 
     always #5 clk = ~clk;
 
