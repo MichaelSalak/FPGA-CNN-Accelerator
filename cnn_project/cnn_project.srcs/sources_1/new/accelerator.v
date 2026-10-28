@@ -26,7 +26,13 @@
 // have main controller to coordinate everything
 // components: convolution engine, 
 
+// for later:
+// layer configuration module: keep convolution module layer-independent
+// store zero points, tensor dimensions, parameter base address for current layer
+// 
 
+// *** may need to update requantization parameters for per-output-channel 
+// *** multipliers + shifts 
 
 /*
 3 CONV_2D inputs: [111 42 77] outputs: [112]
@@ -152,8 +158,7 @@ module top_depthwise(input clk, rst, start, output done);
                         .weight_r_en(weight_r_en),
                         .bias_r_en(bias_r_en),
                         .output_data(output_data),
-                        .done(done)
-    );
+                        .done(done));
 
     // 4x4x2 = 32 INT8 input activations
     activation_mem #(.DATA_WIDTH(8),
@@ -165,8 +170,7 @@ module top_depthwise(input clk, rst, start, output done);
                      .w_addr(5'd0),
                      .r_addr(input_addr),
                      .w_data(8'd0),
-                     .r_data(input_data)
-    );
+                     .r_data(input_data));
 
     // 4x4x2 = 32 INT8 output activations
     activation_mem #(.DATA_WIDTH(8),
@@ -177,8 +181,7 @@ module top_depthwise(input clk, rst, start, output done);
                      .w_addr(output_addr),
                      .r_addr(5'd0),
                      .w_data(output_data),
-                     .r_data()
-    );
+                     .r_data());
 
     // 3x3 kernel for each of 2 channels = 18 weights
     weight_mem #(.COUNT(18),
@@ -186,8 +189,7 @@ module top_depthwise(input clk, rst, start, output done);
               wm(.clk(clk),
                  .r_en(weight_r_en),
                  .addr(weight_addr),
-                 .data_out(weight_data)
-    );
+                 .data_out(weight_data));
 
     // One INT32 bias per channel = 2 biases
     bias_mem #(.COUNT(2),
@@ -195,8 +197,7 @@ module top_depthwise(input clk, rst, start, output done);
             bm(.clk(clk),
                .r_en(bias_r_en),
                .addr(bias_addr),
-               .data_out(bias_data)
-    );
+               .data_out(bias_data));
 
 endmodule
 
@@ -205,41 +206,63 @@ endmodule
 
 
 module top_pointwise(input clk, rst, start, output done);
-    wire input_r_en, output_w_en;
-    wire [4:0] input_addr, output_addr;      // 2x2x8 for now = 32
-    wire signed [7:0] input_data, output_data;
+    wire input_r_en, output_w_en, weight_r_en, bias_r_en;
+    wire signed [7:0] input_data, output_data, weight_data;
+    wire signed [31:0] bias_data;
+    
+    wire [15:0] input_addr;
+    wire [15:0] output_addr;
+    wire [15:0] weight_addr;
+    wire [15:0] bias_addr;
     
     wire signed [31:0] multiplier;
-    wire signed [7:0] shift, output_zero_point, activation_min, activation_max;   
+    wire signed [7:0] shift;
+    wire signed [7:0] input_zero_point;
+    wire signed [7:0] output_zero_point;
+    wire signed [7:0] activation_min;
+    wire signed [7:0] activation_max;
+    
+    // original regression test: 2x2x8 -> 2x2x8 - works
+    // 2x2x4 -> 2x2x8 - works
+    // 3x3x2 -> 3x3x4 - 
+    
+    localparam [15:0] INPUT_HEIGHT    = 16'd3;
+    localparam [15:0] INPUT_WIDTH     = 16'd3;
+    localparam [15:0] INPUT_CHANNELS  = 16'd2;
+    localparam [15:0] OUTPUT_CHANNELS = 16'd4;
+
+    // memory base addresses
+    localparam [15:0] INPUT_BASE  = 16'd0;
+    localparam [15:0] WEIGHT_BASE = 16'd0;
+    localparam [15:0] BIAS_BASE   = 16'd0;
+    localparam [15:0] OUTPUT_BASE = 16'd0;
     
     
     // assign requant parameters to values (temporary)
     assign multiplier = 32'h40000000;       // 0.5
     assign shift = -2;                      // divide by 4
-    assign output_zero_point = 0;
+    assign input_zero_point = -14;
+    assign output_zero_point = 3;
     assign activation_min = -128;
     assign activation_max = 127;
     
-
-    
-    
-    
-    wire weight_r_en;
-    wire [5:0] weight_addr;     // 64 weights for now
-    wire signed [7:0] weight_data;
-    
-    wire bias_r_en;
-    wire [2:0] bias_addr;       // 8 bias values for now
-    wire signed [31:0] bias_data;      // 32 bit bias values (not INT8)
-
     pointwise_conv conv(.clk(clk),
                         .rst(rst),
-                        .start(start),                     
-                        .input_data(input_data),                     
+                        .start(start),
+                        .input_data(input_data),
                         .weight_data(weight_data),
                         .bias_data(bias_data),
+                        .input_height(INPUT_HEIGHT),
+                        .input_width(INPUT_WIDTH),
+                        .input_channels(INPUT_CHANNELS),
+                        .output_channels(OUTPUT_CHANNELS),
+                        .input_base(INPUT_BASE),
+                        .weight_base(WEIGHT_BASE),
+                        .bias_base(BIAS_BASE),
+                        .output_base(OUTPUT_BASE),
                         .multiplier(multiplier),
                         .shift(shift),
+                        .input_zero_point(input_zero_point),
                         .output_zero_point(output_zero_point),
                         .activation_min(activation_min),
                         .activation_max(activation_max),
@@ -257,8 +280,8 @@ module top_pointwise(input clk, rst, start, output done);
     // initial input buffer: loads data from file for now    
     // not using dual port functionality yet           
     activation_mem #(.DATA_WIDTH(8),
-                     .COUNT(32),
-                     .INIT_FILE("input_2x2x8.mem"))
+                     .COUNT(18),
+                     .INIT_FILE("input_3x3x2.mem"))
                  am0(.clk(clk), 
                      .w_en(0),
                      .r_en(input_r_en),
@@ -270,7 +293,7 @@ module top_pointwise(input clk, rst, start, output done);
     // initial output buffer: does not use file parameter
     // not using dual port functionality yet           
     activation_mem #(.DATA_WIDTH(8),
-                     .COUNT(32))
+                     .COUNT(36))
                  am1(.clk(clk), 
                      .w_en(output_w_en),
                      .r_en(0),
@@ -279,33 +302,20 @@ module top_pointwise(input clk, rst, start, output done);
                      .w_data(output_data),
                      .r_data());
 
-    // currently 64 example weights
-    weight_mem #(.COUNT(64),
-                 .INIT_FILE("weights_8x8.mem"))
+    weight_mem #(.COUNT(8),
+                 .INIT_FILE("weights_2x4.mem"))
               wm(.clk(clk),
                  .r_en(weight_r_en),
                  .addr(weight_addr),
                  .data_out(weight_data));
 
-    // currently 8 example bias values
-    bias_mem #(.COUNT(8),
-               .INIT_FILE("bias_8.mem"))
+    bias_mem #(.COUNT(4),
+               .INIT_FILE("bias_4_3x3x2.mem"))
             bm(.clk(clk),
                .r_en(bias_r_en),
                .addr(bias_addr),
                .data_out(bias_data));
 
 endmodule
-
-
-
-
-
-// for later:
-// layer configuration module: keep convolution module layer-independent
-// store zero points, tensor dimensions, parameter base address for current layer
-// 
-
-
 
 

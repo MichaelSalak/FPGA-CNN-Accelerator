@@ -20,31 +20,29 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-
-
-
-
-
-
 module conv_test_tb();
     reg clk = 0;
     reg rst = 1;
     reg start = 0;
     wire done;
 
-    /*
+    
     top_pointwise dut(.clk(clk),
                       .rst(rst),
                       .start(start),
                       .done(done));
-    */ 
-                      
+    
+               
+    /*                  
     top_depthwise dut(.clk(clk),
                       .rst(rst),
                       .start(start),
                       .done(done));
+    */
 
     always #5 clk = ~clk;
+
+    integer i;
 
     initial begin
         #20 rst = 0;
@@ -56,8 +54,23 @@ module conv_test_tb();
         start = 0;
 
         wait(done);
+        
+        // Ensure final write has completed
+        @(posedge clk);
+        #1;
 
-        #30 $finish;
+        // Print output memory
+        $display("\n========== POINTWISE OUTPUT ==========");
+
+        // iterate across output memory (32 entries in 2x2x8 test)
+        // 36 in 3x3x4 output
+        for(i = 0; i < 36; i = i + 1) begin
+            $write("%02h ", dut.am1.mem[i]);
+        end
+
+        $display("\n======================================");
+
+        $finish;
     end
 endmodule
 
@@ -268,35 +281,3 @@ module requantize_tb;
     end
 endmodule
 
-
-
-
-
-
-module conv1x1_small_tb();
-    reg clk = 0;
-    reg rst = 1;
-    reg start = 0;
-    wire done;
-
-    conv1x1_small dut(.clk(clk),
-                      .rst(rst),
-                      .start(start),
-                      .done(done));
-
-    always #5 clk = ~clk;
-
-    initial begin
-        #20 rst = 0;
-
-        @(negedge clk);
-        start = 1;
-
-        @(negedge clk);
-        start = 0;
-
-        wait(done);
-
-        #20 $finish;
-    end
-endmodule

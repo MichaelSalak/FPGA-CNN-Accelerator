@@ -110,7 +110,7 @@ module depthwise_conv(input clk, rst, start,
     // registers to acquire current addresses
     reg [15:0] input_addr_reg, weight_addr_reg, bias_addr_reg, output_addr_reg;
 
-    // Connect address registers to output ports
+    // connect address registers to output ports
     assign input_addr  = input_addr_reg;
     assign weight_addr = weight_addr_reg;
     assign bias_addr   = bias_addr_reg;
