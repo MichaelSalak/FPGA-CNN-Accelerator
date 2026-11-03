@@ -20,38 +20,52 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-// dual port memory for activation values
-// ADDR_WIDTH: number of bits needed to encode address
-// DATA_WIDTH: number of bits needed to store data
-// COUNT: number of memory addresses 
-// INIT_FILE: file to load initial activations from - will likely change later 
-
-// ******* CURRENTLY USING 32 BIT OUTPUT DATA --> SWITCH TO 8 BITS AFTER REQUANTIZATION
-
-module activation_mem#(parameter DATA_WIDTH = 8,
-                       parameter COUNT = 32,
-                       parameter ADDR_WIDTH = $clog2(COUNT),
-                       parameter INIT_FILE = "")
-                      (input clk, w_en, r_en,
-                       input [ADDR_WIDTH-1:0] w_addr, r_addr,
-                       input [DATA_WIDTH-1:0] w_data,
-                       output reg [DATA_WIDTH-1:0] r_data
+// activation memory designed for UltraRAM inference
+// using URAM to keep all memory on-board
+// will instantiate 3 activation buffers: 2 for alternating input/output, 
+// 1 for residual add operations
+// COUNT refers to the number of 64 bit words, not INT8 activations
+module activation_mem_packed #(parameter ADDR_WIDTH = 18,
+                               parameter COUNT = 32768)
+                              (input clk, r_en, w_en,
+                               input [ADDR_WIDTH-1:0] r_addr, w_addr,
+                               input signed [7:0] w_data,
+                               output signed [7:0] r_data
 );
-    
-    reg [DATA_WIDTH-1:0] mem [0:COUNT-1];
+    // force URAM synthesis 
+    (* ram_style = "ultra" *)   
+    reg [63:0] mem [0:COUNT-1];
 
-    initial begin
-        if(INIT_FILE != "") // load input buffer with file data for now
-            $readmemh(INIT_FILE, mem);
-    end
+    wire [ADDR_WIDTH-4:0] read_word_addr, write_word_addr;
+
+    assign read_word_addr  = r_addr[ADDR_WIDTH-1:3];
+    assign write_word_addr = w_addr[ADDR_WIDTH-1:3];
+
+    wire [7:0] byte_we;
+    assign byte_we = w_en ? (8'b00000001 << w_addr[2:0]) : 8'b0;
+
+    // replicate the write data across all byte lanes
+    wire [63:0] write_word = {8{w_data}};
+
+    reg [63:0] read_word;
+    reg [2:0] read_byte_index;
+
+    integer i;
 
     always @(posedge clk) begin
-        if(r_en)
-            r_data <= mem[r_addr];
-
-        if(w_en)
-            mem[w_addr] <= w_data;
+        // byte-enable writes
+        for(i = 0; i < 8; i = i + 1) begin
+            if(byte_we[i])
+                mem[write_word_addr][i*8 +: 8] <= write_word[i*8 +: 8];
+        end
+        // full-width synchronous read
+        if(r_en) begin
+            read_word <= mem[read_word_addr];
+            read_byte_index <= r_addr[2:0];
+        end
     end
+
+    assign r_data = read_word[read_byte_index*8 +: 8];
 endmodule
 
 
@@ -67,6 +81,7 @@ module weight_mem#(parameter COUNT = 32,
                    output reg signed [7:0] data_out
 );
 
+    
     reg signed [7:0] mem [0:COUNT-1];   // data width is a fixed 8 bits 
 
     initial begin
@@ -92,6 +107,7 @@ module bias_mem#(parameter COUNT = 8,
                  input [ADDR_WIDTH-1:0] addr,
                  output reg signed [31:0] data_out
 );
+
 
     reg signed [31:0] mem [0:COUNT-1];  // data width is a fixed 32 bits 
 
@@ -123,7 +139,9 @@ module quant_param_mem#(parameter COUNT = 8,
 );
 
     // stored as [ multiplier | shift ]
+    
     reg [39:0] mem [0:COUNT-1];
+    
     reg [39:0] read_data;
 
     initial begin

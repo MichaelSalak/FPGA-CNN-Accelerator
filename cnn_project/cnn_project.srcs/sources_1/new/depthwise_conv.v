@@ -43,10 +43,10 @@ module depthwise_conv(input clk, rst, start,
                       input [1:0] pad_left,
                       
                       // memory base addresses
-                      input [15:0] input_base,
-                      input [15:0] weight_base,
-                      input [15:0] bias_base,
-                      input [15:0] output_base,
+                      input [17:0] input_base,
+                      input [16:0] weight_base,
+                      input [11:0] bias_base,
+                      input [17:0] output_base,
                 
                       // precomputed address increments
                       input [15:0] input_row_stride,
@@ -62,10 +62,10 @@ module depthwise_conv(input clk, rst, start,
                       input signed [7:0] activation_min, activation_max,
                       
                       // memory reads, output data + done signal                 
-                      output [15:0] input_addr,
-                      output [15:0] output_addr,
-                      output [15:0] weight_addr,
-                      output [15:0] bias_addr,
+                      output [17:0] input_addr,
+                      output [17:0] output_addr,
+                      output [16:0] weight_addr,
+                      output [11:0] bias_addr,
                       output reg signed [7:0] output_data,
                       output reg input_r_en,
                       output reg output_w_en,
@@ -90,25 +90,27 @@ module depthwise_conv(input clk, rst, start,
                NEXT          = 4'd12,
                DONE          = 4'd13;
 
-    reg [15:0] out_x, out_y;    // current output position
-    reg [15:0] channel;         // current input/output channel
+    reg [17:0] out_x, out_y;    // current output position
+    reg [17:0] channel;         // current input/output channel
     reg [1:0] kx, ky;   // current position within the 3x3 kernel
 
     // starting address of the current output pixel row, corresponding to channel 0
     // allows new output row to be reached without carrying over horizontal offset
-    reg [15:0] row_base_addr;
+    reg [17:0] row_base_addr;
 
     // starting address of the current output pixel in current output row, 
     // corresponding to channel 0
     // allows next pixel to be reached without carrying over channel offset
-    reg [15:0] pixel_base_addr;
+    reg [17:0] pixel_base_addr;
 
     // starting address for the current output pixel and channel
     // allows next window to be reached after completing 1 kernel
-    reg [15:0] window_base_addr;
+    reg [17:0] window_base_addr;
 
     // registers to acquire current addresses
-    reg [15:0] input_addr_reg, weight_addr_reg, bias_addr_reg, output_addr_reg;
+    reg [17:0] input_addr_reg, output_addr_reg;
+    reg [16:0] weight_addr_reg;
+    reg [11:0] bias_addr_reg;
 
     // connect address registers to output ports
     assign input_addr  = input_addr_reg;
@@ -126,14 +128,14 @@ module depthwise_conv(input clk, rst, start,
         (pad_left == 1) ? input_col_stride : 16'd0;
     
     // intial window address, including padding
-    wire [15:0] initial_window_addr = input_base - top_offset - left_offset;
+    wire [17:0] initial_window_addr = input_base - top_offset - left_offset;
 
     // current logical input coordinates corresponding to current kernel element
     // *can be negative due to SAME padding
-    reg signed [16:0] in_x, in_y;
+    reg signed [18:0] in_x, in_y;
     
     // logical origin of current output window
-    reg signed [16:0] pixel_x, row_y;
+    reg signed [18:0] pixel_x, row_y;
     
     // corrected activation, registered in SUB
     reg signed [8:0] corrected_input;

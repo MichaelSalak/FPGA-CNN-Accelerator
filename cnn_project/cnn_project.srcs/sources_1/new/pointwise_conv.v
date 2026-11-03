@@ -33,10 +33,10 @@ module pointwise_conv(input clk, rst, start,
                       input [15:0] output_channels,
                 
                       // memory base addresses
-                      input [15:0] input_base,
-                      input [15:0] weight_base,
-                      input [15:0] bias_base,
-                      input [15:0] output_base,
+                      input [17:0] input_base,
+                      input [16:0] weight_base,
+                      input [11:0] bias_base,
+                      input [17:0] output_base,
                       
                       // requantization parameters
                       input signed [31:0] multiplier,
@@ -45,10 +45,10 @@ module pointwise_conv(input clk, rst, start,
                       input signed [7:0] activation_min, activation_max, 
                       
                       // memory reads, output data + done signal           
-                      output [15:0] input_addr,
-                      output [15:0] output_addr,
-                      output [15:0] weight_addr,
-                      output [15:0] bias_addr,
+                      output [17:0] input_addr,
+                      output [17:0] output_addr,
+                      output [16:0] weight_addr,
+                      output [11:0] bias_addr,
                       output reg signed [7:0] output_data,
                       output reg input_r_en,
                       output reg output_w_en,
@@ -56,7 +56,6 @@ module pointwise_conv(input clk, rst, start,
                       output reg bias_r_en,
                       output reg done
 );
-
     reg [3:0] state;
     
     localparam IDLE = 4'd0, 
@@ -75,13 +74,13 @@ module pointwise_conv(input clk, rst, start,
                DONE          = 4'd12;
 
     // counters to track current pixel index + in/out channels
-    reg [15:0] out_y;
-    reg [15:0] out_x;
-    reg [15:0] out_channel;
-    reg [15:0] in_channel;
+    reg [17:0] out_x, out_y;
+    reg [17:0] out_channel, in_channel;
 
     // registers to acquire current addresses
-    reg [15:0] input_addr_reg, weight_addr_reg, bias_addr_reg, output_addr_reg;
+    reg [17:0] input_addr_reg, output_addr_reg;
+    reg [16:0] weight_addr_reg;
+    reg [11:0] bias_addr_reg;
 
     // connect address registers to output ports
     assign input_addr  = input_addr_reg;
@@ -90,10 +89,10 @@ module pointwise_conv(input clk, rst, start,
     assign output_addr = output_addr_reg;
 
     // starting address of current input pixel
-    reg [15:0] pixel_base_addr;
+    reg [17:0] pixel_base_addr;
 
     // starting weight address of current output channel
-    reg [15:0] weight_channel_base;
+    reg [17:0] weight_channel_base;
 
     reg signed [31:0] acc;
     reg signed [8:0] corrected_input;

@@ -20,60 +20,51 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-
-// use bram for 2 activation memory buffers for ping pong buffering
-// use bram for weight/bias memory
-// have main controller to coordinate everything
-// components: convolution engine, 
-
-// for later:
-// layer configuration module: keep convolution module layer-independent
-// store zero points, tensor dimensions, parameter base address for current layer
-// 
-
-// *** may need to update requantization parameters for per-output-channel 
-// *** multipliers + shifts 
-
-/*
-3 CONV_2D inputs: [111 42 77] outputs: [112]
-
-Tensor	Shape	         Meaning
-111	    [1, 60, 80, 8]	 Input activation
-42	    [8, 1, 1, 8]	 Weights
-77	    [8]	             Biases
-112	    [1, 60, 80, 8]	 Output activation
-*/
-
-
-
-
-module top_depthwise(input clk, rst, start, output done);
-    wire input_r_en, weight_r_en, bias_r_en, output_w_en;
-    wire [15:0] input_addr, weight_addr, bias_addr, output_addr;
-    wire signed [7:0] input_data, output_data;
+// currently exposes buffer a writes for initialization and
+// buffer b reads for synthesis uram utilization verification
+module top_depthwise(input clk, rst, start, 
+                     input init_w_en,
+                     input [17:0] init_w_addr,
+                     input signed [7:0] init_w_data,
+                     input output_r_en,
+                     input [17:0] output_r_addr,
+                     output signed [7:0] output_r_data,
+                     output done
+);
+    // activation buffer A
+    wire act_a_r_en, act_a_w_en;
+    wire [17:0] act_a_r_addr, act_a_w_addr;
+    wire signed [7:0] act_a_r_data, act_a_w_data;
+    
+    // expose write ports for buffer a for testing
+    assign act_a_w_en = init_w_en;
+    assign act_a_w_addr = init_w_addr;
+    assign act_a_w_data = init_w_data;
+    
+    // activation buffer B
+    wire act_b_r_en, act_b_w_en;
+    wire [17:0] act_b_r_addr, act_b_w_addr;
+    wire signed [7:0] act_b_r_data, act_b_w_data;
+    
+    // expose read port for buffer b for testing
+    assign act_b_r_en = output_r_en;
+    assign act_b_r_addr = output_r_addr;
+    assign act_b_r_data = output_r_data;
+    
+    // activation buffer C (residual buffer, may reduce size later)
+    wire act_c_r_en, act_c_w_en;
+    wire [17:0] act_c_r_addr, act_c_w_addr;
+    wire signed [7:0] act_c_r_data, act_c_w_data;
+    
+    // weight memory
+    wire weight_r_en;
+    wire [16:0] weight_addr;
     wire signed [7:0] weight_data;
+    
+    // bias memory
+    wire bias_r_en;
+    wire [11:0] bias_addr;
     wire signed [31:0] bias_data;
-
-    // Input: 4x4x2
-    // Kernel: 3x3
-    // Stride: 1
-    // Padding: VALID
-    // Output: 2x2x2
-    // WORKS CORRECTLY ^^^
-    
-    // Input: 4x4x2
-    // Kernel: 3x3
-    // Stride: 2
-    // Padding: SAME
-    // Output: 2x2x2
-    // WORKS CORRECTLY ^^^
-    
-    // Input: 4x4x2
-    // Kernel: 3x3
-    // Stride: 1
-    // Padding: SAME
-    // Output: 4x4x2
-    // 
 
     localparam [15:0] INPUT_HEIGHT  = 16'd4;
     localparam [15:0] INPUT_WIDTH   = 16'd4;
@@ -82,11 +73,10 @@ module top_depthwise(input clk, rst, start, output done);
     localparam [15:0] OUTPUT_WIDTH  = 16'd4;
 
     // each memory is separate in this test, so all base addresses are zero
-    localparam [15:0] INPUT_BASE  = 16'd0;
-    localparam [15:0] WEIGHT_BASE = 16'd0;
-    localparam [15:0] BIAS_BASE   = 16'd0;
-    localparam [15:0] OUTPUT_BASE = 16'd0;
-
+    localparam [18:0] INPUT_BASE  = 18'd0;
+    localparam [17:0] WEIGHT_BASE = 17'd0;
+    localparam [15:0] BIAS_BASE   = 12'd0;
+    localparam [18:0] OUTPUT_BASE = 18'd0;
 
     // HWC layout:
     // input_row_stride = input_width * channels
@@ -123,7 +113,7 @@ module top_depthwise(input clk, rst, start, output done);
     depthwise_conv conv(.clk(clk),
                         .rst(rst),
                         .start(start),
-                        .input_data(input_data),
+                        .input_data(act_a_r_data),  // buffer a read
                         .weight_data(weight_data),
                         .bias_data(bias_data),
                         .input_height(INPUT_HEIGHT),
@@ -149,40 +139,55 @@ module top_depthwise(input clk, rst, start, output done);
                         .output_zero_point(output_zero_point),
                         .activation_min(activation_min),
                         .activation_max(activation_max),
-                        .input_addr(input_addr),
-                        .output_addr(output_addr),
+                        .input_addr(act_a_r_addr),  // buffer a read
+                        .output_addr(act_b_w_addr), // buffer b write
                         .weight_addr(weight_addr),
                         .bias_addr(bias_addr),
-                        .input_r_en(input_r_en),
-                        .output_w_en(output_w_en),
+                        .input_r_en(act_a_r_en),    // buffer a read
+                        .output_w_en(act_b_w_en),   // buffer b write
                         .weight_r_en(weight_r_en),
                         .bias_r_en(bias_r_en),
-                        .output_data(output_data),
+                        .output_data(act_b_w_data), // buffer b write
                         .done(done));
 
-    // 4x4x2 = 32 INT8 input activations
-    activation_mem #(.DATA_WIDTH(8),
-                     .COUNT(32),
-                     .INIT_FILE("input_4x4x2.mem")) 
-                 am0(.clk(clk),
-                     .w_en(1'b0),
-                     .r_en(input_r_en),
-                     .w_addr(5'd0),
-                     .r_addr(input_addr),
-                     .w_data(8'd0),
-                     .r_data(input_data));
+    // activation buffer A (cannot init uram from file)
+    activation_mem_packed #(.ADDR_WIDTH(18), 
+                            .COUNT(32768)) 
+               activation_a(.clk(clk),
+                            .r_en(act_a_r_en),
+                            .w_en(act_a_w_en),
+                            .r_addr(act_a_r_addr),
+                            .w_addr(act_a_w_addr),
+                            .w_data(act_a_w_data),
+                            .r_data(act_a_r_data));
+    
+    // activation buffer B
+    activation_mem_packed #(.ADDR_WIDTH(18),
+                            .COUNT(32768)) 
+               activation_b(.clk(clk),
+                            .r_en(act_b_r_en),
+                            .w_en(act_b_w_en),
+                            .r_addr(act_b_r_addr),
+                            .w_addr(act_b_w_addr),
+                            .w_data(act_b_w_data),
+                            .r_data(act_b_r_data));
+    
+    // activation/residual buffer C
+    /*      // (unused for now)
+    activation_mem_packed #(.ADDR_WIDTH(18),
+                            .COUNT(32768)) 
+               activation_c(.clk(clk),
+                            .r_en(act_c_r_en),
+                            .w_en(act_c_w_en),
+                            .r_addr(act_c_r_addr),
+                            .w_addr(act_c_w_addr),
+                            .w_data(act_c_w_data),
+                            .r_data(act_c_r_data));
+    */
 
-    // 4x4x2 = 32 INT8 output activations
-    activation_mem #(.DATA_WIDTH(8),
-                     .COUNT(32)) 
-                 am1(.clk(clk),
-                     .w_en(output_w_en),
-                     .r_en(1'b0),
-                     .w_addr(output_addr),
-                     .r_addr(5'd0),
-                     .w_data(output_data),
-                     .r_data());
 
+    // will need to update input file + size later
+    
     // 3x3 kernel for each of 2 channels = 18 weights
     weight_mem #(.COUNT(18),
                  .INIT_FILE("weights_3x3x2.mem"))
@@ -205,26 +210,51 @@ endmodule
 
 
 
-module top_pointwise(input clk, rst, start, output done);
-    wire input_r_en, output_w_en, weight_r_en, bias_r_en;
-    wire signed [7:0] input_data, output_data, weight_data;
+// currently exposes buffer a writes for initialization and
+// buffer b reads for synthesis uram utilization verification
+module top_pointwise(input clk, rst, start, 
+                     input init_w_en,
+                     input [17:0] init_w_addr,
+                     input signed [7:0] init_w_data,
+                     input output_r_en,
+                     input [17:0] output_r_addr,
+                     output signed [7:0] output_r_data,
+                     output done
+);
+    // activation buffer A
+    wire act_a_r_en, act_a_w_en;
+    wire [17:0] act_a_r_addr, act_a_w_addr;
+    wire signed [7:0] act_a_r_data, act_a_w_data;
+    
+    // expose write ports for buffer a for testing
+    assign act_a_w_en = init_w_en;
+    assign act_a_w_addr = init_w_addr;
+    assign act_a_w_data = init_w_data;
+    
+    // activation buffer B
+    wire act_b_r_en, act_b_w_en;
+    wire [17:0] act_b_r_addr, act_b_w_addr;
+    wire signed [7:0] act_b_r_data, act_b_w_data;
+    
+    // expose read port for buffer b for testing
+    assign act_b_r_en = output_r_en;
+    assign act_b_r_addr = output_r_addr;
+    assign act_b_r_data = output_r_data;
+    
+    // activation buffer C (residual buffer, may reduce size later)
+    wire act_c_r_en, act_c_w_en;
+    wire [17:0] act_c_r_addr, act_c_w_addr;
+    wire signed [7:0] act_c_r_data, act_c_w_data;
+    
+    // weight memory
+    wire weight_r_en;
+    wire [16:0] weight_addr;
+    wire signed [7:0] weight_data;
+    
+    // bias memory
+    wire bias_r_en;
+    wire [11:0] bias_addr;
     wire signed [31:0] bias_data;
-    
-    wire [15:0] input_addr;
-    wire [15:0] output_addr;
-    wire [15:0] weight_addr;
-    wire [15:0] bias_addr;
-    
-    wire signed [31:0] multiplier;
-    wire signed [7:0] shift;
-    wire signed [7:0] input_zero_point;
-    wire signed [7:0] output_zero_point;
-    wire signed [7:0] activation_min;
-    wire signed [7:0] activation_max;
-    
-    // original regression test: 2x2x8 -> 2x2x8 - works
-    // 2x2x4 -> 2x2x8 - works
-    // 3x3x2 -> 3x3x4 - 
     
     localparam [15:0] INPUT_HEIGHT    = 16'd3;
     localparam [15:0] INPUT_WIDTH     = 16'd3;
@@ -232,11 +262,17 @@ module top_pointwise(input clk, rst, start, output done);
     localparam [15:0] OUTPUT_CHANNELS = 16'd4;
 
     // memory base addresses
-    localparam [15:0] INPUT_BASE  = 16'd0;
-    localparam [15:0] WEIGHT_BASE = 16'd0;
-    localparam [15:0] BIAS_BASE   = 16'd0;
-    localparam [15:0] OUTPUT_BASE = 16'd0;
+    localparam [18:0] INPUT_BASE  = 18'd0;
+    localparam [17:0] WEIGHT_BASE = 17'd0;
+    localparam [15:0] BIAS_BASE   = 12'd0;
+    localparam [18:0] OUTPUT_BASE = 18'd0;
     
+    wire signed [31:0] multiplier;
+    wire signed [7:0] shift;
+    wire signed [7:0] input_zero_point;
+    wire signed [7:0] output_zero_point;
+    wire signed [7:0] activation_min;
+    wire signed [7:0] activation_max;
     
     // assign requant parameters to values (temporary)
     assign multiplier = 32'h40000000;       // 0.5
@@ -249,7 +285,7 @@ module top_pointwise(input clk, rst, start, output done);
     pointwise_conv conv(.clk(clk),
                         .rst(rst),
                         .start(start),
-                        .input_data(input_data),
+                        .input_data(act_a_r_data),  // buffer a read
                         .weight_data(weight_data),
                         .bias_data(bias_data),
                         .input_height(INPUT_HEIGHT),
@@ -266,41 +302,53 @@ module top_pointwise(input clk, rst, start, output done);
                         .output_zero_point(output_zero_point),
                         .activation_min(activation_min),
                         .activation_max(activation_max),
-                        .input_addr(input_addr),
-                        .output_addr(output_addr),
+                        .input_addr(act_a_r_addr),  // buffer a read
+                        .output_addr(act_b_w_addr), // buffer b write
                         .weight_addr(weight_addr),
                         .bias_addr(bias_addr),
-                        .output_data(output_data),
-                        .input_r_en(input_r_en),
-                        .output_w_en(output_w_en),
+                        .output_data(act_b_w_data), // buffer b write
+                        .input_r_en(act_a_r_en),    // buffer a read
+                        .output_w_en(act_b_w_en),   // buffer b write
                         .weight_r_en(weight_r_en),
                         .bias_r_en(bias_r_en),
                         .done(done));
                     
-    // initial input buffer: loads data from file for now    
-    // not using dual port functionality yet           
-    activation_mem #(.DATA_WIDTH(8),
-                     .COUNT(18),
-                     .INIT_FILE("input_3x3x2.mem"))
-                 am0(.clk(clk), 
-                     .w_en(0),
-                     .r_en(input_r_en),
-                     .w_addr(0),
-                     .r_addr(input_addr),
-                     .w_data(0),
-                     .r_data(input_data));
+    // activation buffer A (cannot init uram from file)
+    activation_mem_packed #(.ADDR_WIDTH(18), 
+                            .COUNT(32768)) 
+               activation_a(.clk(clk),
+                            .r_en(act_a_r_en),
+                            .w_en(act_a_w_en),
+                            .r_addr(act_a_r_addr),
+                            .w_addr(act_a_w_addr),
+                            .w_data(act_a_w_data),
+                            .r_data(act_a_r_data));
+    
+    // activation buffer B
+    activation_mem_packed #(.ADDR_WIDTH(18),
+                            .COUNT(32768)) 
+               activation_b(.clk(clk),
+                            .r_en(act_b_r_en),
+                            .w_en(act_b_w_en),
+                            .r_addr(act_b_r_addr),
+                            .w_addr(act_b_w_addr),
+                            .w_data(act_b_w_data),
+                            .r_data(act_b_r_data));
+    
+    // activation/residual buffer C
+    /*      // (unused for now)
+    activation_mem_packed #(.ADDR_WIDTH(18),
+                            .COUNT(32768)) 
+               activation_c(.clk(clk),
+                            .r_en(act_c_r_en),
+                            .w_en(act_c_w_en),
+                            .r_addr(act_c_r_addr),
+                            .w_addr(act_c_w_addr),
+                            .w_data(act_c_w_data),
+                            .r_data(act_c_r_data));
+    */
 
-    // initial output buffer: does not use file parameter
-    // not using dual port functionality yet           
-    activation_mem #(.DATA_WIDTH(8),
-                     .COUNT(36))
-                 am1(.clk(clk), 
-                     .w_en(output_w_en),
-                     .r_en(0),
-                     .w_addr(output_addr),
-                     .r_addr(0),
-                     .w_data(output_data),
-                     .r_data());
+    // will need to update input file + size later
 
     weight_mem #(.COUNT(8),
                  .INIT_FILE("weights_2x4.mem"))
