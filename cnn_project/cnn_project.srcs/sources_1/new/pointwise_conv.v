@@ -58,8 +58,7 @@ module pointwise_conv(input clk, rst, start,
 );
     reg [3:0] state;
     
-    localparam IDLE = 4'd0, 
-               //LOAD_LAYER = 3'd1,   // fetch zero points + other layer config info
+    localparam IDLE          = 4'd0, 
                READ_BIAS     = 4'd1,
                WAIT_BIAS     = 4'd2,
                INIT_ACC      = 4'd3,

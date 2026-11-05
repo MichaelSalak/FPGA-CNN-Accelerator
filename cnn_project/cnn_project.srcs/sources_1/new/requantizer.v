@@ -76,7 +76,7 @@ module requantize(input clk, rst, start,
     wire signed [63:0] rounded_high = shifted_high +
         ((numerator < 0) && has_remainder);
 
-    // Ssturating high-multiply special case
+    // saturating high-multiply special case
     wire multiply_overflow = (shifted_acc == 32'sh80000000) &&
         (multiplier_reg == 32'sh80000000);
 
@@ -96,14 +96,12 @@ module requantize(input clk, rst, start,
             state <= IDLE;
             done <= 0;
             result <= 0;
-
             acc_reg <= 0;
             multiplier_reg <= 0;
             shift_reg <= 0;
             zero_point_reg <= 0;
             min_reg <= 0;
             max_reg <= 0;
-
             product <= 0;
             high_result <= 0;
             scaled_result <= 0;
