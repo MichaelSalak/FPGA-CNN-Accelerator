@@ -165,8 +165,7 @@ module depthwise_conv(input clk, rst, start,
                    .activation_min(activation_min),
                    .activation_max(activation_max),
                    .result(requant_result),
-                   .done(requant_done)
-    );
+                   .done(requant_done));
 
     always @(posedge clk) begin
         if(rst) begin
