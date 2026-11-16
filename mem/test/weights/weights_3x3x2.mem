@@ -1,0 +1,20 @@
+// 3x3x2 weights (kernel) for 4x4x2 depthwise convolution test
+
+FF
+FD
+03
+01
+00
+FE
+FF
+FC
+FF
+00
+00
+FC
+FF
+04
+FE
+02
+FD
+FD

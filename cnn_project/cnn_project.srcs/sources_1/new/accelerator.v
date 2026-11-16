@@ -20,6 +20,21 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
+module top_logistic(input clk, 
+                    input signed [7:0] input_data,
+                    output signed [7:0] result
+);
+
+    logistic l(.clk(clk),
+               .input_data(input_data),
+               .result(result));
+
+endmodule
+
+
+
+
+
 // currently exposes buffer a writes for initialization 
 module top_fully_connected(input clk, rst, start,
     // base addresses
