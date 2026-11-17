@@ -28,20 +28,8 @@
 // INT8 weight values: 80,128 --> lg(80,128) = 17 bit weight addr widths
 // bias + requant output channels: 3617 --> lg(3617) = 12 bit bias, quant mem addr widths
 
-// ****** per output channel quantization multiplier + shift values
-
-// ****** will require additional activation buffer to handle residual adds
-
-// ****** need to implement additional operations (initial conv, residual add, etc)
-
-// ****** memory: 144 BRAM blocks is not enough for on chip memory, incorporating 
-// UltraRAM blocks could solve this if utilized correctly
-// use (* ram_style = "ultra" *) for activation buffers
-// use (* ram_style = "block" *) for weights, bias, requant memories
-
-
 /*
-layer_type
+layer
 input_height
 input_width
 input_channels
@@ -67,6 +55,49 @@ and the relevant input quantization parameters
 
 
 
+// possible revision:
+/*
+// Operation selection
+opcode
+input_buffer
+output_buffer
+
+// Base addresses
+input_base
+output_base
+weight_base
+bias_base
+requant_base
+
+// Tensor dimensions
+input_height
+input_width
+input_channels
+output_height
+output_width
+output_channels
+
+// Convolution parameters
+stride_2
+pad_top
+pad_left
+
+// Quantization parameters
+input_zero_point
+output_zero_point
+activation_min
+activation_max
+
+// Residual ADD input
+input2_buffer
+input2_base
+input2_zero_point
+
+// Reserved bits / ADD-specific parameters
+*/
+
+// need to update functional units to support per channel quantization:
+// include requant base address
 
 
  
