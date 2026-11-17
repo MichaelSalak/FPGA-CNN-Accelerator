@@ -55,9 +55,7 @@ module top_residual_add(input clk, rst, start,
                         // output scaling
                         input signed [31:0] output_multiplier,
                         input signed [7:0] output_shift,
-                    
-                        input [5:0] left_shift,
-                    
+
                         // activation limits
                         input signed [7:0] activation_min, 
                         input signed [7:0] activation_max,
@@ -121,7 +119,6 @@ module top_residual_add(input clk, rst, start,
                      .input_b_shift(input_b_shift),
                      .output_multiplier(output_multiplier),
                      .output_shift(output_shift),
-                     .left_shift(left_shift),
                      .activation_min(activation_min),
                      .activation_max(activation_max),
                      .done(done));

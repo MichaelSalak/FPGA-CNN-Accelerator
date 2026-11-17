@@ -59,8 +59,6 @@ module residual_add(input clk, rst, start,
                     input signed [31:0] output_multiplier,
                     input signed [7:0] output_shift,
                 
-                    input [5:0] left_shift,
-                
                     // activation limits
                     input signed [7:0] activation_min,
                     input signed [7:0] activation_max,
@@ -81,6 +79,9 @@ module residual_add(input clk, rst, start,
                WRITE         = 4'd9,
                NEXT          = 4'd10,
                DONE          = 4'd11;
+               
+    // residual add left shift is always 20 for TFLite 
+    localparam [5:0] LEFT_SHIFT = 6'd20;      
 
     // current index
     reg [17:0] idx;
@@ -186,7 +187,7 @@ module residual_add(input clk, rst, start,
                         $signed({input_b_data[7], input_b_data}) -
                         $signed({input_b_zero_point[7], input_b_zero_point});
                 
-                    scale_value <= extended_a <<< left_shift;
+                    scale_value <= extended_a <<< LEFT_SHIFT;
                     scale_multiplier <= input_a_multiplier;
                     scale_shift <= input_a_shift;
                     scale_start <= 1;
@@ -197,7 +198,7 @@ module residual_add(input clk, rst, start,
                         scaled_a <= scale_result;
                         
                         // prepare b for scaling, bypassing additional wait state
-                        scale_value <= extended_b <<< left_shift;
+                        scale_value <= extended_b <<< LEFT_SHIFT;
                         scale_multiplier <= input_b_multiplier;
                         scale_shift <= input_b_shift;
                         scale_start <= 1;
