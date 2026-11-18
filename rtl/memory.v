@@ -75,7 +75,7 @@ endmodule
 // memory for weight values: fixed in memory after synthesis
 module weight_mem#(parameter COUNT = 32,
                    parameter ADDR_WIDTH = $clog2(COUNT),
-                   parameter INIT_FILE = "weights_8x8.mem")
+                   parameter INIT_FILE = "weights.mem")
                   (input clk, r_en,
                    input [ADDR_WIDTH-1:0] addr,
                    output reg signed [7:0] data_out
@@ -102,7 +102,7 @@ endmodule
 // memory for bias values: fixed in memory after synthesis
 module bias_mem#(parameter COUNT = 8,
                  parameter ADDR_WIDTH = $clog2(COUNT),
-                 parameter INIT_FILE = "bias_8.mem")
+                 parameter INIT_FILE = "bias.mem")
                 (input clk, r_en,
                  input [ADDR_WIDTH-1:0] addr,
                  output reg signed [31:0] data_out
@@ -131,7 +131,7 @@ endmodule
 // floating point as a normalized significand + power of 2
 module quant_param_mem#(parameter COUNT = 8,
                         parameter ADDR_WIDTH = $clog2(COUNT),
-                        parameter INIT_FILE = "quant_params.mem")
+                        parameter INIT_FILE = "requant.mem")
                        (input clk, r_en,
                         input [ADDR_WIDTH-1:0] addr,
                         output signed [31:0] multiplier,
@@ -157,4 +157,3 @@ module quant_param_mem#(parameter COUNT = 8,
     assign multiplier = $signed(read_data[39:8]);
     assign shift = $signed(read_data[7:0]);
 endmodule
-
