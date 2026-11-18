@@ -80,8 +80,6 @@ module weight_mem#(parameter COUNT = 32,
                    input [ADDR_WIDTH-1:0] addr,
                    output reg signed [7:0] data_out
 );
-
-    
     reg signed [7:0] mem [0:COUNT-1];   // data width is a fixed 8 bits 
 
     initial begin
@@ -107,8 +105,6 @@ module bias_mem#(parameter COUNT = 8,
                  input [ADDR_WIDTH-1:0] addr,
                  output reg signed [31:0] data_out
 );
-
-
     reg signed [31:0] mem [0:COUNT-1];  // data width is a fixed 32 bits 
 
     initial begin
@@ -137,9 +133,7 @@ module quant_param_mem#(parameter COUNT = 8,
                         output signed [31:0] multiplier,
                         output signed [7:0] shift
 );
-
     // stored as [ multiplier | shift ]
-    
     reg [39:0] mem [0:COUNT-1];
     
     reg [39:0] read_data;

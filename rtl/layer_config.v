@@ -52,7 +52,9 @@ output_channels	  : 16 bits : output channel count
 Convolution addressing		
 stride_2          : 1 bit   : select stride 1 or 2
 pad_top	          : 2 bits  : top padding
+pad_bottom	      : 2 bits  : bottom padding
 pad_left          : 2 bits  : left padding
+pad_right	      : 2 bits  : right padding
 input_row_stride  : 18 bits : address increment between input rows
 output_col_step   : 18 bits : input-window address increment between output columns
 output_row_step	  : 18 bits : input-window address increment between output rows
@@ -74,21 +76,27 @@ input2_base	      : 18 bits : second input activation base address
 input2_zero_point : 8 bits  : second input tensor zero point 
 element_count     : 18 bits : element count for ADD (precomputed H*W*C)
 
-// derive pad_right, pad_bottom in controller
-
 */
-// layer configuration memory, 328 configuration bits per layer
+// layer configuration memory, 332 configuration bits per layer
 // stores 69 layers, operations 1 through 69
 // ROM address = TFLite operator index - 1
-module layer_config #(
-    parameter CONFIG_WIDTH = 328,
-    parameter NUM_LAYERS   = 72
-)(
-    input clk, en,
-    input [6:0] layer_addr,
-    output reg [CONFIG_WIDTH-1:0] config_data
+module layer_config #(parameter CONFIG_WIDTH = 332,
+                      parameter NUM_LAYERS = 69,
+                      parameter INIT_FILE = "layer_config.mem")
+                     (input clk, en,
+                      input [6:0] layer_addr,
+                      output reg [CONFIG_WIDTH-1:0] config_data
 );
 
+    reg [CONFIG_WIDTH-1:0] mem [0:NUM_LAYERS-1];  // 69 layers, 332 bits each
 
+    initial begin
+        $readmemh(INIT_FILE, mem);  // load values from .mem file
+    end
 
+    // synchronous reads for BRAM
+    always @(posedge clk) begin
+        if(en)
+            config_data <= mem[layer_addr];
+    end
 endmodule
