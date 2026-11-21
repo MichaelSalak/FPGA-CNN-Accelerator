@@ -19,10 +19,6 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-
-// still using per layer requantization parameters: change to per channel
-
-
 // mode: 0 = standard convolution (kernel 1x1 or 3x3),
 //       1 = depthwise convolution (depth multiplier 1)
 // tensor layout: HWC 
@@ -31,35 +27,37 @@
 //   depthwise:          [1, Kh, Kw, Cout]
 module unified_conv(input clk, rst, start,
                     input depthwise_mode,   // determine conv type for addressing
-                    input [2:0] kernel_size,       // 1 or 3
+                    input [1:0] kernel_size,       // 1 or 3
                     input stride_2,               // 0 -> 1, 1 -> 2
                     input [1:0] pad_top, pad_left,
-                    input [15:0] input_height, input_width, input_channels,
-                    input [15:0] output_height, output_width, output_channels,
+                    input [6:0] input_height, 
+                    input [7:0] input_width, 
+                    input [10:0] input_channels,
+                    input [5:0] output_height, 
+                    input [6:0] output_width, 
+                    input [10:0] output_channels,
                     input [17:0] input_base, output_base,
                     input [16:0] weight_base,
-                    input [11:0] bias_base,
+                    input [11:0] bias_base, requant_base,
                     // precomputed for HWC input, in units of int8 elements:
                     // input_row_stride = input_width * input_channels
                     // output_col_step  = stride * input_channels
                     // output_row_step  = stride * input_row_stride
-                    input [17:0] input_row_stride, output_col_step, output_row_step,
+                    input [12:0] input_row_stride, 
+                    input [10:0] output_col_step, 
+                    input [12:0] output_row_step,
                     input signed [7:0] input_data, weight_data,
-                    input signed [31:0] bias_data,
-                    
-                    
-                    // change to per channel requant soon
+                    input signed [31:0] bias_data,                
                     input signed [31:0] multiplier,
-                    input signed [7:0] shift,
-                    
-                    
+                    input signed [7:0] shift,                  
                     input signed [7:0] input_zero_point, output_zero_point,
                     input signed [7:0] activation_min, activation_max,
                     output [17:0] input_addr, output_addr,
                     output [16:0] weight_addr,
-                    output [11:0] bias_addr,
+                    output [11:0] bias_addr, requant_addr,
                     output reg signed [7:0] output_data,
-                    output reg input_r_en, weight_r_en, bias_r_en, output_w_en,
+                    output reg input_r_en, weight_r_en, bias_r_en, 
+                    output reg requant_r_en, output_w_en,
                     output reg done
 );
     reg [4:0] state;
@@ -79,16 +77,19 @@ module unified_conv(input clk, rst, start,
                      NEXT          = 12, 
                      DONE          = 13;
      
-    reg [15:0] out_x, out_y;  // output pixel index
-    reg [15:0] out_ch, in_ch; // output and input channels
-    reg [2:0] kx, ky;   // kernel index
+    reg [6:0] out_x;   // output pixel index
+    reg [5:0] out_y;  
+    reg [10:0] out_ch, in_ch; // output and input channels
+    reg [1:0] kx, ky;   // kernel index
     
     // input coordinates where current convolution window begins
-    reg signed [18:0] origin_x, origin_y;   
+    reg signed [8:0] origin_x;
+    reg signed [7:0] origin_y;   
     
     // coordinates of current element within window
     // logical_x = origin_x + kx, same for y
-    reg signed [18:0] logical_x, logical_y;
+    reg signed [8:0] logical_x;
+    reg signed [7:0] logical_y;
     
     // row/pixel/kernel bases are updated incrementally via counters
     reg [17:0] row_base, pixel_base, kernel_row_base;
@@ -112,25 +113,30 @@ module unified_conv(input clk, rst, start,
     // determine whether current logical input coordinates are out of bounds
     // indicate need for padding if so
     wire padded = logical_x < 0 || logical_y < 0 ||
-        logical_x >= $signed({3'b0,input_width}) ||
-        logical_y >= $signed({3'b0,input_height});
+        logical_x >= $signed({1'b0,input_width}) ||
+        logical_y >= $signed({1'b0,input_height});
         
     // determine offsets based on padding amount (0,1,2)
-    wire [17:0] top_offset = (pad_top == 2) ? (input_row_stride << 1) :
-                              (pad_top == 1) ? input_row_stride : 18'd0;            
-    wire [17:0] left_offset = (pad_left == 2) ? ({2'b0,input_channels} << 1) :
-                               (pad_left == 1) ? {2'b0,input_channels} : 18'd0;
+    wire [17:0] row_stride_ext = {5'd0, input_row_stride};
+    wire [17:0] channels_ext   = {7'd0, input_channels};
     
+    wire [17:0] top_offset = (pad_top == 2) ? (row_stride_ext << 1) :
+                             (pad_top == 1) ? row_stride_ext : 18'd0;
+    
+    wire [17:0] left_offset = (pad_left == 2) ? (channels_ext << 1) :
+                              (pad_left == 1) ? channels_ext : 18'd0;
+        
     // intial window address, including padding                           
     wire [17:0] start_window = input_base - top_offset - left_offset;
     
     // fix channel count to 1 for depthwise
-    wire [15:0] channel_count = depthwise_mode ? 16'd1 : input_channels;
+    wire [10:0] channel_count = depthwise_mode ? 11'd1 : input_channels;
     
     assign input_addr = input_addr_r;
     assign output_addr = output_addr_r;
     assign weight_addr = weight_addr_r;
     assign bias_addr = bias_addr_r;
+    assign requant_addr = requant_base + {1'b0, out_ch};
 
     requantize req(.clk(clk),
                    .rst(rst),
@@ -173,6 +179,7 @@ module unified_conv(input clk, rst, start,
             input_r_en <= 0; 
             weight_r_en <= 0;
             bias_r_en <= 0; 
+            requant_r_en <= 0;
             output_w_en <= 0; 
             done <= 0;
         end else begin
@@ -180,6 +187,7 @@ module unified_conv(input clk, rst, start,
             input_r_en <= 0;
             weight_r_en <= 0;
             bias_r_en <= 0;
+            requant_r_en <= 0;
             output_w_en <= 0;
             requant_start <= 0;
             done <= 0;
@@ -197,10 +205,10 @@ module unified_conv(input clk, rst, start,
                         weight_addr_r <= weight_base;
                         filter_weight_base <= weight_base;
                         bias_addr_r <= bias_base;
-                        origin_x <= -$signed({17'd0,pad_left});
-                        origin_y <= -$signed({17'd0,pad_top});
-                        logical_x <= -$signed({17'd0,pad_left});
-                        logical_y <= -$signed({17'd0,pad_top});
+                        origin_x <= -$signed({7'd0,pad_left});
+                        origin_y <= -$signed({6'd0,pad_top});
+                        logical_x <= -$signed({7'd0,pad_left});
+                        logical_y <= -$signed({6'd0,pad_top});
                         if(input_height != 0 && input_width != 0 &&
                             input_channels != 0 && output_height != 0 &&
                             output_width != 0 && output_channels != 0 &&
@@ -214,6 +222,7 @@ module unified_conv(input clk, rst, start,
                 READ_BIAS: begin    // prepare bias to be read
                     bias_addr_r <= bias_base + out_ch;
                     bias_r_en <= 1;
+                    requant_r_en <= 1;  // fetch requant values simultaneously
                     state <= WAIT_BIAS;
                 end
                 WAIT_BIAS: begin    // extra cycle needed to perform sync read
@@ -328,7 +337,7 @@ module unified_conv(input clk, rst, start,
                         if(out_x + 1 < output_width) begin
                             out_x <= out_x + 1'b1;
                             pixel_base <= pixel_base + output_col_step;
-                            origin_x <= origin_x + (stride_2 ? 19'sd2 : 19'sd1);
+                            origin_x <= origin_x + (stride_2 ? 9'sd2 : 9'sd1);
                             state <= READ_BIAS;
                         // next row
                         end else if(out_y + 1 < output_height) begin
@@ -336,8 +345,8 @@ module unified_conv(input clk, rst, start,
                             out_y <= out_y + 1'b1;
                             row_base <= row_base + output_row_step;
                             pixel_base <= row_base + output_row_step;
-                            origin_x <= -$signed({17'd0,pad_left});
-                            origin_y <= origin_y + (stride_2 ? 19'sd2 : 19'sd1);
+                            origin_x <= -$signed({7'd0,pad_left});
+                            origin_y <= origin_y + (stride_2 ? 8'sd2 : 8'sd1);
                             state <= READ_BIAS;
                         end else begin
                             state <= DONE;

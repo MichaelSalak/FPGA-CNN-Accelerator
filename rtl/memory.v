@@ -73,7 +73,7 @@ endmodule
 
 
 // memory for weight values: fixed in memory after synthesis
-module weight_mem#(parameter COUNT = 32,
+module weight_mem#(parameter COUNT = 80128,
                    parameter ADDR_WIDTH = $clog2(COUNT),
                    parameter INIT_FILE = "weights.mem")
                   (input clk, r_en,
@@ -98,7 +98,7 @@ endmodule
 
 
 // memory for bias values: fixed in memory after synthesis
-module bias_mem#(parameter COUNT = 8,
+module bias_mem#(parameter COUNT = 3617,
                  parameter ADDR_WIDTH = $clog2(COUNT),
                  parameter INIT_FILE = "bias.mem")
                 (input clk, r_en,
@@ -125,7 +125,7 @@ endmodule
 // memory for requantization multiplier + shift values:
 // multiplier and shift values are precomputed in python to express the 
 // floating point as a normalized significand + power of 2
-module quant_param_mem#(parameter COUNT = 8,
+module quant_param_mem#(parameter COUNT = 3651,
                         parameter ADDR_WIDTH = $clog2(COUNT),
                         parameter INIT_FILE = "requant.mem")
                        (input clk, r_en,

@@ -25,9 +25,9 @@ module top_pad_tb;
 
     reg rst = 1;
     reg start = 0;
-    reg [15:0] input_height = 2;
-    reg [15:0] input_width = 3;
-    reg [15:0] input_channels = 2;
+    reg [6:0] input_height = 2;
+    reg [7:0] input_width = 3;
+    reg [10:0] input_channels = 2;
     reg [1:0] pad_top = 0, pad_bottom = 0, pad_left = 0, pad_right = 0;
     reg signed [7:0] pad_value = -8'sd128;
     reg [17:0] input_base = 0, output_base = 0;

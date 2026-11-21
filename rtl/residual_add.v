@@ -24,11 +24,11 @@
 // each tensor may have a unique zero point and scale, requiring inputs to be 
 // rescaled prior to addition
 module residual_add(input clk, rst, start,
-
                     // tensor configuration
-                    input [17:0] element_count,
-                    input [17:0] input_a_base,
+                    input [15:0] element_count,
+                    input [17:0] input_a_base, 
                     input [17:0] input_b_base,
+                    input [11:0] requant_base,
                     input [17:0] output_base,
                 
                     // input activation A
@@ -52,12 +52,10 @@ module residual_add(input clk, rst, start,
                     input signed [7:0] output_zero_point,
                 
                     // fixed-point scaling parameters
-                    input signed [31:0] input_a_multiplier,
-                    input signed [7:0] input_a_shift,
-                    input signed [31:0] input_b_multiplier,
-                    input signed [7:0] input_b_shift,
-                    input signed [31:0] output_multiplier,
-                    input signed [7:0] output_shift,
+                    input signed [31:0] multiplier,
+                    input signed [7:0] shift,
+                    output reg [11:0] requant_addr,
+                    output reg requant_r_en,
                 
                     // activation limits
                     input signed [7:0] activation_min,
@@ -65,26 +63,37 @@ module residual_add(input clk, rst, start,
                 
                     output reg done
 );
-    reg [3:0] state;
+    reg [4:0] state;
     
-    localparam IDLE          = 4'd0,
-               READ_INPUTS   = 4'd1,
-               WAIT_INPUTS   = 4'd2,
-               SUB_ZP_A      = 4'd3,
-               START_SCALE_A = 4'd4,
-               WAIT_SCALE_A  = 4'd5,
-               SCALE_B       = 4'd6,
-               ADD           = 4'd7,
-               SCALE_OUT     = 4'd8,
-               WRITE         = 4'd9,
-               NEXT          = 4'd10,
-               DONE          = 4'd11;
+    localparam IDLE          = 5'd0,
+               READ_REQ_A    = 5'd1,
+               WAIT_REQ_A    = 5'd2,
+               READ_REQ_B    = 5'd3,
+               WAIT_REQ_B    = 5'd4,
+               READ_REQ_OUT  = 5'd5,
+               WAIT_REQ_OUT  = 5'd6,
+               STORE_REQ_OUT = 5'd7,
+               READ_INPUTS   = 5'd8,
+               WAIT_INPUTS   = 5'd9,
+               SUB_ZP_A      = 5'd10,
+               START_SCALE_A = 5'd11,
+               WAIT_SCALE_A  = 5'd12,
+               SCALE_B       = 5'd13,
+               ADD           = 5'd14,
+               SCALE_OUT     = 5'd15,
+               WRITE         = 5'd16,
+               NEXT          = 5'd17,
+               DONE          = 5'd18;
                
     // residual add left shift is always 20 for TFLite 
     localparam [5:0] LEFT_SHIFT = 6'd20;      
 
+    // registered multiplier and shift values after initial reads
+    reg signed [31:0] input_a_multiplier, input_b_multiplier, output_multiplier;
+    reg signed [7:0] input_a_shift, input_b_shift, output_shift;
+
     // current index
-    reg [17:0] idx;
+    reg [15:0] idx;
     
     // subtract input zero points from inputs
     reg signed [8:0] corrected_a, corrected_b;
@@ -129,12 +138,20 @@ module residual_add(input clk, rst, start,
             idx <= 0;
             input_a_addr <= 0;
             input_b_addr <= 0;
+            requant_addr <= 0;
             output_addr <= 0;
             input_a_r_en <= 0;
             input_b_r_en <= 0;
+            requant_r_en <= 0;
             output_w_en <= 0;
             output_data <= 0;
             done <= 0;
+            input_a_multiplier <= 0;
+            input_a_shift <= 0;
+            input_b_multiplier <= 0;
+            input_b_shift <= 0;
+            output_multiplier <= 0;
+            output_shift <= 0;
             corrected_a <= 0;
             corrected_b <= 0;
             scaled_a <= 0;
@@ -147,6 +164,7 @@ module residual_add(input clk, rst, start,
             // default control values
             input_a_r_en <= 0;
             input_b_r_en <= 0;
+            requant_r_en <= 0;
             output_w_en <= 0;
             scale_start <= 0;
             done <= 0;
@@ -157,14 +175,51 @@ module residual_add(input clk, rst, start,
                         idx <= 0;
                         input_a_addr <= input_a_base;
                         input_b_addr <= input_b_base;
+                        requant_addr <= requant_base;
                         output_addr <= output_base;
 
                         if(element_count == 0)
                             state <= DONE;
                         else
-                            state <= READ_INPUTS;
+                            state <= READ_REQ_A;
                     end
                 end
+                READ_REQ_A: begin   // fetch requant params for input a
+                    requant_r_en <= 1;
+                    state <= WAIT_REQ_A;
+                end
+                WAIT_REQ_A: begin   // extra cycle needed to perform sync read
+                    state <= READ_REQ_B;
+                end
+                READ_REQ_B: begin   // fetch requant params for input b
+                    // store input a requant params
+                    input_a_multiplier <= multiplier;
+                    input_a_shift <= shift;
+                
+                    requant_addr <= requant_base + 1;
+                    requant_r_en <= 1;
+                    state <= WAIT_REQ_B;
+                end
+                WAIT_REQ_B: begin   // extra cycle needed to perform sync read
+                    state <= READ_REQ_OUT;
+                end
+                READ_REQ_OUT: begin // fetch requant params for output
+                    // store input b requant params
+                    input_b_multiplier <= multiplier;
+                    input_b_shift <= shift;
+                
+                    requant_addr <= requant_base + 2;
+                    requant_r_en <= 1;
+                    state <= WAIT_REQ_OUT;
+                end 
+                WAIT_REQ_OUT: begin // extra cycle needed to perform sync read
+                    state <= STORE_REQ_OUT;
+                end
+                STORE_REQ_OUT: begin    // store output requant params
+                    output_multiplier <= multiplier;
+                    output_shift <= shift;
+                    state <= READ_INPUTS;
+                end           
                 READ_INPUTS: begin  // enable reads for 1 cycle
                     input_a_r_en <= 1;
                     input_b_r_en <= 1;

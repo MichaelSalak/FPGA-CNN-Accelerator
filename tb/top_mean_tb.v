@@ -25,9 +25,8 @@ module top_mean_tb;
 
     reg rst = 1, start = 0;
     reg [17:0] input_base = 18'd17;
+    reg [11:0] requant_base = 12'd0;
     reg [17:0] output_base = 18'd31;
-    reg signed [31:0] multiplier = 32'sd1155693653;
-    reg signed [7:0] shift = -8'sd2;
 
     reg init_w_en = 0;
     reg [17:0] init_w_addr = 0;
@@ -43,8 +42,7 @@ module top_mean_tb;
 
     top_mean dut (
         .clk(clk), .rst(rst), .start(start),
-        .input_base(input_base), .output_base(output_base),
-        .multiplier(multiplier), .shift(shift),
+        .input_base(input_base), .requant_base(requant_base), .output_base(output_base),
         .init_w_en(init_w_en), .init_w_addr(init_w_addr),
         .init_w_data(init_w_data),
         .output_r_en(output_r_en), .output_r_addr(output_r_addr),

@@ -22,9 +22,9 @@
 // test wrapper for pad operation
 module top_pad(input clk, rst, start,
                // input tensor dimensions
-               input [15:0] input_height,
-               input [15:0] input_width,
-               input [15:0] input_channels,
+               input [6:0] input_height,
+               input [7:0] input_width,
+               input [10:0] input_channels,
                            
                // padding configuration
                input [1:0] pad_top,

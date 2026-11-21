@@ -21,22 +21,18 @@
 
 // test wrapper for fully connected / dense layer operation
 module top_fully_connected(input clk, rst, start,
-    // base addresses
-    input [17:0] input_base,
-    input [17:0] weight_base,
-    input [17:0] bias_base,
-
-    // requantization parameters
-    input signed [31:0] multiplier,
-    input signed [7:0] shift,
-
-    // testbench initialization interface
-    input init_w_en,
-    input [17:0] init_w_addr,
-    input signed [7:0] init_w_data,
-
-    output signed [7:0] result,
-    output done
+                           // base addresses
+                           input [17:0] input_base,
+                           input [16:0] weight_base,
+                           input [11:0] bias_base, requant_base,
+                       
+                           // testbench initialization interface
+                           input init_w_en,
+                           input [17:0] init_w_addr,
+                           input signed [7:0] init_w_data,
+                    
+                           output signed [7:0] result,
+                           output done
 );
     // activation buffer A
     wire act_a_r_en, act_a_w_en;
@@ -57,6 +53,12 @@ module top_fully_connected(input clk, rst, start,
     wire bias_r_en;
     wire [11:0] bias_addr;
     wire signed [31:0] bias_data;
+    
+    // requant memory
+    wire requant_r_en;
+    wire [11:0] requant_addr;
+    wire signed [31:0] multiplier;
+    wire signed [7:0] shift;
 
     fully_connected fc_inst(.clk(clk),
                             .rst(rst),
@@ -73,6 +75,9 @@ module top_fully_connected(input clk, rst, start,
                             .bias_data(bias_data),
                             .bias_addr(bias_addr),
                             .bias_r_en(bias_r_en),
+                            .requant_base(requant_base),
+                            .requant_addr(requant_addr),
+                            .requant_r_en(requant_r_en),
                             .multiplier(multiplier),
                             .shift(shift),
                             .result(result),
@@ -102,5 +107,14 @@ module top_fully_connected(input clk, rst, start,
                .r_en(bias_r_en),
                .addr(bias_addr),
                .data_out(bias_data));
+               
+    quant_param_mem #(.COUNT(1),
+                      .ADDR_WIDTH(1),   // need to explictly set (lg1 = 0)
+                      .INIT_FILE("fc_requant.mem")) 
+                   rm(.clk(clk),
+                      .r_en(requant_r_en),
+                      .addr(requant_addr),
+                      .multiplier(multiplier),
+                      .shift(shift));
 
 endmodule

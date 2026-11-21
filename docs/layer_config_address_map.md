@@ -1,11 +1,12 @@
 # Layer configuration ROM address map
 
-Each record is 332 bits (83 hexadecimal digits); ROM address = TFLite OP number minus 1.
+Each record is 259 bits (65 hexadecimal digits); ROM address = TFLite OP number minus 1.
 Initial tensor 0 must be preloaded into buffer A. All activation bases are zero.
 Buffers A=0, B=1, C=2. Unused parameter addresses and second-input fields are zero.
 Opcode mapping: CONV and DW=0 (depthwise_mode distinguishes), ADD=1, PAD=2, MEAN=3, FC=4.
-The configured input_row_stride is input_width * input_channels; output_col_step is output_channels;
-output_row_step is output_width * output_channels.
+For CONV/DW: input_row_stride = input_width * input_channels;
+output_col_step = stride * input_channels; output_row_step = stride * input_row_stride.
+For non-convolution operators, the step fields are unused.
 PAD stores all four explicit padding values; convolution padding fields describe implicit SAME padding.
 
 | ROM | TFLite OP | Type | Input | Input 2 | Output | Input H×W×C | Output H×W×C | Weight base | Bias base | Requant base |
@@ -82,44 +83,46 @@ PAD stores all four explicit padding values; convolution padding fields describe
 
 ## Bit fields (MSB first)
 
-| Field | Bits | [MSB:LSB] |
-|---|---:|---|
-| `opcode` | 4 | [331:328] |
-| `depthwise_mode` | 1 | [327:327] |
-| `kernel_size` | 3 | [326:324] |
-| `input_buffer` | 2 | [323:322] |
-| `output_buffer` | 2 | [321:320] |
-| `input_base` | 18 | [319:302] |
-| `output_base` | 18 | [301:284] |
-| `input_height` | 16 | [283:268] |
-| `input_width` | 16 | [267:252] |
-| `input_channels` | 16 | [251:236] |
-| `output_height` | 16 | [235:220] |
-| `output_width` | 16 | [219:204] |
-| `output_channels` | 16 | [203:188] |
-| `stride_2` | 1 | [187:187] |
-| `pad_top` | 2 | [186:185] |
-| `pad_bottom` | 2 | [184:183] |
-| `pad_left` | 2 | [182:181] |
-| `pad_right` | 2 | [180:179] |
-| `input_row_stride` | 18 | [178:161] |
-| `output_col_step` | 18 | [160:143] |
-| `output_row_step` | 18 | [142:125] |
-| `weight_base` | 17 | [124:108] |
-| `bias_base` | 12 | [107:96] |
-| `requant_base` | 18 | [95:78] |
-| `input_zero_point` | 8 | [77:70] |
-| `output_zero_point` | 8 | [69:62] |
-| `activation_min` | 8 | [61:54] |
-| `activation_max` | 8 | [53:46] |
-| `input2_buffer` | 2 | [45:44] |
-| `input2_base` | 18 | [43:26] |
-| `input2_zero_point` | 8 | [25:18] |
-| `element_count` | 18 | [17:0] |
+| Field | Bits | [MSB:LSB] | Width derivation |
+|---|---:|---|---|
+| `opcode` | 3 | [258:256] | 5 opcode values (0-4); 3 bits encode up to 8 |
+| `depthwise_mode` | 1 | [255:255] | Boolean: standard vs. depthwise convolution |
+| `kernel_size` | 2 | [254:253] | Kernel dimension is 1 or 3; stored literally |
+| `input_buffer` | 2 | [252:251] | 3 activation buffers: A, B, C |
+| `output_buffer` | 2 | [250:249] | 3 activation buffers: A, B, C |
+| `input_base` | 18 | [248:231] | 18-bit activation address interface; current bases are 0 |
+| `output_base` | 18 | [230:213] | 18-bit activation address interface; current bases are 0 |
+| `input_height` | 7 | [212:206] | Maximum input height = 120 |
+| `input_width` | 8 | [205:198] | Maximum input width = 160 |
+| `input_channels` | 11 | [197:187] | Maximum input channels = 1280 |
+| `output_height` | 6 | [186:181] | Maximum output height = 61 (PAD output) |
+| `output_width` | 7 | [180:174] | Maximum output width = 81 (PAD output) |
+| `output_channels` | 11 | [173:163] | Maximum output channels = 1280 |
+| `stride_2` | 1 | [162:162] | Boolean: stride 1 or 2 |
+| `pad_top` | 2 | [161:160] | 2-bit padding interface; model values fit |
+| `pad_bottom` | 2 | [159:158] | 2-bit padding interface; model values fit |
+| `pad_left` | 2 | [157:156] | 2-bit padding interface; model values fit |
+| `pad_right` | 2 | [155:154] | 2-bit padding interface; model values fit |
+| `input_row_stride` | 13 | [153:141] | Maximum input_width * input_channels = 6400 |
+| `output_col_step` | 11 | [140:130] | Input-window column step = stride * input_channels; 11-bit model bound |
+| `output_row_step` | 13 | [129:117] | Input-window row step = stride * input_width * input_channels; 13-bit model bound |
+| `weight_base` | 17 | [116:100] | Maximum mapped weight base = 78848 |
+| `bias_base` | 12 | [99:88] | Maximum mapped bias base = 3616 |
+| `requant_base` | 12 | [87:76] | Maximum mapped requant base = 3650 |
+| `input_zero_point` | 8 | [75:68] | Signed int8 tensor quantization parameter |
+| `output_zero_point` | 8 | [67:60] | Signed int8 tensor quantization parameter |
+| `activation_min` | 8 | [59:52] | Signed int8 output clamp |
+| `activation_max` | 8 | [51:44] | Signed int8 output clamp |
+| `input2_buffer` | 2 | [43:42] | 3 activation buffers: A, B, C |
+| `input2_base` | 18 | [41:24] | 18-bit activation address interface; current bases are 0 |
+| `input2_zero_point` | 8 | [23:16] | Signed int8 tensor quantization parameter |
+| `element_count` | 16 | [15:0] | Maximum ADD H * W * C = 38400 |
 
-**Total: 69 × 332 = 22,908 bits.**
+**Total: 69 × 259 = 17,871 bits.**
 
 ## Notes
+- Width derivations reflect the current 69-operation model and/or retained RTL interface widths.
+- Address arithmetic in the RTL must remain wide enough for full activation addresses.
 - `activation_min`/`activation_max` reflect fused activation options (NONE, RELU, RELU_N1_TO_1, RELU6).
 - `PAD` requires writing input zero-point into padded cells.
 - `MEAN` reduction count and requant multiplier are supplied separately by the MEAN module and requant ROM.

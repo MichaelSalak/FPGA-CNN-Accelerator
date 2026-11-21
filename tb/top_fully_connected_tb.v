@@ -27,13 +27,9 @@ module top_fully_connected_tb;
 
     // Base addresses
     reg [17:0] input_base;
-    reg [17:0] weight_base;
-    reg [17:0] bias_base;
-
-    // Requantization parameters
-    reg signed [31:0] multiplier;
-    reg signed [7:0] shift;
-
+    reg [16:0] weight_base;
+    reg [11:0] bias_base, requant_base;
+    
     // Activation buffer initialization
     reg init_w_en;
     reg [17:0] init_w_addr;
@@ -61,9 +57,7 @@ module top_fully_connected_tb;
         .input_base(input_base),
         .weight_base(weight_base),
         .bias_base(bias_base),
-
-        .multiplier(multiplier),
-        .shift(shift),
+        .requant_base(requant_base),
 
         .init_w_en(init_w_en),
         .init_w_addr(init_w_addr),
@@ -83,11 +77,9 @@ module top_fully_connected_tb;
         start = 0;
 
         input_base = 18'd0;
-        weight_base = 18'd0;
-        bias_base = 18'd0;
-
-        multiplier = 32'sd1763002834;
-        shift = -8'sd11;
+        weight_base = 17'd0;
+        bias_base = 12'd0;
+        requant_base = 12'd0;
 
         init_w_en = 0;
         init_w_addr = 0;

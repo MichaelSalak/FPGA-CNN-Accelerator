@@ -26,12 +26,6 @@
 // need output quantize state?
 
 
-// IMPORTANT
-// need to update pad calculation:
-// pad_bottom = H_out - H_in - pad_top
-// pad_right = W_out - W_in - pad_left
-
-
 module controller(
 
 );

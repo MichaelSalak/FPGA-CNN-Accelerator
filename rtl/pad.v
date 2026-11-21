@@ -23,9 +23,9 @@
 // padded value is the zero point, pad_value
 module pad(input clk, rst, start,
            // input tensor dimensions
-           input [15:0] input_height,
-           input [15:0] input_width,
-           input [15:0] input_channels,
+           input [6:0] input_height,
+           input [7:0] input_width,
+           input [10:0] input_channels,
                     
            // padding configuration
            input [1:0] pad_top,
@@ -60,19 +60,20 @@ module pad(input clk, rst, start,
                DONE      = 3'd6;
 
     // output dimensions, including padding
-    wire [16:0] output_height = {1'b0, input_height} + pad_top + pad_bottom;
-    wire [16:0] output_width = {1'b0, input_width} + pad_left + pad_right;
+    wire [7:0] output_height = {1'b0, input_height} + pad_top + pad_bottom;
+    wire [8:0] output_width = {1'b0, input_width} + pad_left + pad_right;
 
     // current output position (NHWC order)
-    reg [16:0] out_y, out_x;
-    reg [15:0] channel;
+    reg [7:0] out_y;
+    reg [8:0] out_x;
+    reg [10:0] channel;
 
     // current element is inside the original input tensor
     wire valid_position =
-        (out_y >= {15'd0, pad_top}) &&
-        (out_y < ({15'd0, pad_top} + {1'b0, input_height})) &&
-        (out_x >= {15'd0, pad_left}) &&
-        (out_x < ({15'd0, pad_left} + {1'b0, input_width}));
+        (out_y >= {6'd0, pad_top}) &&
+        (out_y < ({6'd0, pad_top} + {1'b0, input_height})) &&
+        (out_x >= {7'd0, pad_left}) &&
+        (out_x < ({7'd0, pad_left} + {1'b0, input_width}));
 
     // indicates whether the output should copy input_data 
     // or use the padding constant

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate 332-bit layer_config.mem and an auditable Markdown address map.
+"""Generate 259-bit layer_config.mem and an auditable Markdown address map.
 
 Command:
 python generate_layer_config.py `
@@ -23,20 +23,64 @@ import struct
 from pathlib import Path
 from generate_bias import FlatBuffer, parse_raw
 
-# (field, width), MSB to LSB; totals exactly 332 bits.
+# (field, width), MSB to LSB; totals exactly 259 bits.
 FIELDS = [
- ('opcode',4),('depthwise_mode',1),('kernel_size',3),
- ('input_buffer',2),('output_buffer',2),('input_base',18),('output_base',18),
- ('input_height',16),('input_width',16),('input_channels',16),
- ('output_height',16),('output_width',16),('output_channels',16),
- ('stride_2',1),('pad_top',2),('pad_bottom',2),('pad_left',2),('pad_right',2),
- ('input_row_stride',18),('output_col_step',18),('output_row_step',18),
- ('weight_base',17),('bias_base',12),('requant_base',18),
- ('input_zero_point',8),('output_zero_point',8),
- ('activation_min',8),('activation_max',8),
- ('input2_buffer',2),('input2_base',18),('input2_zero_point',8),('element_count',18),
+    ('opcode', 3), ('depthwise_mode', 1), ('kernel_size', 2),
+    ('input_buffer', 2), ('output_buffer', 2),
+    ('input_base', 18), ('output_base', 18),
+    ('input_height', 7), ('input_width', 8), ('input_channels', 11),
+    ('output_height', 6), ('output_width', 7), ('output_channels', 11),
+    ('stride_2', 1),
+    ('pad_top', 2), ('pad_bottom', 2), ('pad_left', 2), ('pad_right', 2),
+    ('input_row_stride', 13), ('output_col_step', 11), ('output_row_step', 13),
+    ('weight_base', 17), ('bias_base', 12), ('requant_base', 12),
+    ('input_zero_point', 8), ('output_zero_point', 8),
+    ('activation_min', 8), ('activation_max', 8),
+    ('input2_buffer', 2), ('input2_base', 18),
+    ('input2_zero_point', 8), ('element_count', 16),
 ]
-assert sum(w for _,w in FIELDS)==332
+WORD_BITS = sum(width for _, width in FIELDS)
+HEX_DIGITS = (WORD_BITS + 3) // 4
+assert WORD_BITS == 259
+
+# Why each field width is sufficient for the currently configured model.
+# Maxima include all 69 configured operators, including explicit PAD layers.
+FIELD_DERIVATION = {
+    'opcode': '5 opcode values (0-4); 3 bits encode up to 8',
+    'depthwise_mode': 'Boolean: standard vs. depthwise convolution',
+    'kernel_size': 'Kernel dimension is 1 or 3; stored literally',
+    'input_buffer': '3 activation buffers: A, B, C',
+    'output_buffer': '3 activation buffers: A, B, C',
+    'input_base': '18-bit activation address interface; current bases are 0',
+    'output_base': '18-bit activation address interface; current bases are 0',
+    'input_height': 'Maximum input height = 120',
+    'input_width': 'Maximum input width = 160',
+    'input_channels': 'Maximum input channels = 1280',
+    'output_height': 'Maximum output height = 61 (PAD output)',
+    'output_width': 'Maximum output width = 81 (PAD output)',
+    'output_channels': 'Maximum output channels = 1280',
+    'stride_2': 'Boolean: stride 1 or 2',
+    'pad_top': '2-bit padding interface; model values fit',
+    'pad_bottom': '2-bit padding interface; model values fit',
+    'pad_left': '2-bit padding interface; model values fit',
+    'pad_right': '2-bit padding interface; model values fit',
+    'input_row_stride': 'Maximum input_width * input_channels = 6400',
+    'output_col_step': 'Input-window column step = stride * input_channels; 11-bit model bound',
+    'output_row_step': 'Input-window row step = stride * input_width * input_channels; 13-bit model bound',
+    'weight_base': 'Maximum mapped weight base = 78848',
+    'bias_base': 'Maximum mapped bias base = 3616',
+    'requant_base': 'Maximum mapped requant base = 3650',
+    'input_zero_point': 'Signed int8 tensor quantization parameter',
+    'output_zero_point': 'Signed int8 tensor quantization parameter',
+    'activation_min': 'Signed int8 output clamp',
+    'activation_max': 'Signed int8 output clamp',
+    'input2_buffer': '3 activation buffers: A, B, C',
+    'input2_base': '18-bit activation address interface; current bases are 0',
+    'input2_zero_point': 'Signed int8 tensor quantization parameter',
+    'element_count': 'Maximum ADD H * W * C = 38400',
+}
+assert set(FIELD_DERIVATION) == {name for name, _ in FIELDS}
+
 OPCODES = {'CONV_2D':0,'DEPTHWISE_CONV_2D':0,'ADD':1,'PAD':2,'MEAN':3,'FULLY_CONNECTED':4}
 BUF={'A':0,'B':1,'C':2}
 
@@ -121,7 +165,7 @@ def pack(vals):
         if not -(1<<(width-1))<=v<(1<<width):
             raise ValueError(f'{name}={v} does not fit {width} bits')
         value=(value<<width)|(v&((1<<width)-1))
-    return f'{value:083X}'
+    return f'{value:0{HEX_DIGITS}X}'
 
 def make_row(op, fb, op_table, assignment, bases, tensor_to_buffer):
     idx=op['index']; typ=op['type']; ids=op['inputs']; out=op['outputs'][0]
@@ -164,12 +208,15 @@ def make_row(op, fb, op_table, assignment, bases, tensor_to_buffer):
     else:raise ValueError(f'Unsupported OP {idx}: {typ}')
     amin,amax=clamp_activation(oz,osc,fused)
     # PAD/MEAN/FC are not convolution; their activation clamps are ignored by appropriate RTL.
+    is_conv = typ in ('CONV_2D', 'DEPTHWISE_CONV_2D')
     vals={name:0 for name,_ in FIELDS}
     vals.update(opcode=OPCODES[typ],depthwise_mode=int(typ=='DEPTHWISE_CONV_2D'),kernel_size=kernel,
         input_buffer=BUF[a[1]],output_buffer=BUF[dst[1]],
         input_height=ih,input_width=iw,input_channels=ic,output_height=oh,output_width=ow,output_channels=oc,
         stride_2=int(stride==2),pad_top=pt,pad_bottom=pb,pad_left=pl,pad_right=pr,
-        input_row_stride=iw*ic,output_col_step=oc,output_row_step=ow*oc,
+        input_row_stride=iw*ic if is_conv else 0,
+        output_col_step=stride*ic if is_conv else 0,
+        output_row_step=stride*iw*ic if is_conv else 0,
         weight_base=bases['weights'][idx],bias_base=bases['biases'][idx],requant_base=bases['requant'][idx],
         input_zero_point=iz,output_zero_point=oz,activation_min=amin,activation_max=amax,
         input2_buffer=BUF[b[1]] if b else 0,
@@ -206,32 +253,33 @@ def main():
         records.append(pack(vals));rows.append((idx,op['type'],asg,ish,osh,vals))
         locations={tid:buf for tid,buf in locations.items() if buf!=outbuf}
         locations[op['outputs'][0]]=outbuf
-    assert len(records)==69 and all(len(r)==83 for r in records)
+    assert len(records)==69 and all(len(r)==HEX_DIGITS for r in records)
     Path(args.mem).parent.mkdir(parents=True,exist_ok=True)
     Path(args.mem).write_text('\n'.join(records)+'\n',encoding='ascii')
     lines=['# Layer configuration ROM address map','',
-       'Each record is 332 bits (83 hexadecimal digits); ROM address = TFLite OP number minus 1.',
+       f'Each record is {WORD_BITS} bits ({HEX_DIGITS} hexadecimal digits); ROM address = TFLite OP number minus 1.',
        'Initial tensor 0 must be preloaded into buffer A. All activation bases are zero.',
        'Buffers A=0, B=1, C=2. Unused parameter addresses and second-input fields are zero.',
        'Opcode mapping: CONV and DW=0 (depthwise_mode distinguishes), ADD=1, PAD=2, MEAN=3, FC=4.',
-       'The configured input_row_stride is input_width * input_channels; output_col_step is output_channels;',
-       'output_row_step is output_width * output_channels.',
+       'For CONV/DW: input_row_stride = input_width * input_channels;',
+       'output_col_step = stride * input_channels; output_row_step = stride * input_row_stride.',
+       'For non-convolution operators, the step fields are unused.',
        'PAD stores all four explicit padding values; convolution padding fields describe implicit SAME padding.',
        '', '| ROM | TFLite OP | Type | Input | Input 2 | Output | Input H×W×C | Output H×W×C | Weight base | Bias base | Requant base |',
        '|---:|---:|---|---|---|---|---|---|---:|---:|---:|']
     for i,typ,asg,ish,osh,v in rows:
         label=lambda item: f'{item[0]}/{item[1]}' if item else '—'
         lines.append(f'| {i-1} | {i} | {typ} | {label(asg["a"])} | {label(asg["b"])} | {label(asg["out"])} | {"×".join(map(str,ish))} | {"×".join(map(str,osh))} | {v["weight_base"]} | {v["bias_base"]} | {v["requant_base"]} |')
-    lines.extend(['','## Bit fields (MSB first)','', '| Field | Bits | [MSB:LSB] |','|---|---:|---|'])
-    high=sum(w for _,w in FIELDS)-1
+    lines.extend(['','## Bit fields (MSB first)','', '| Field | Bits | [MSB:LSB] | Width derivation |', '|---|---:|---|---|'])
+    high=WORD_BITS-1
     for name,w in FIELDS:
-        lines.append(f'| `{name}` | {w} | [{high}:{high-w+1}] |');high-=w
-    lines.extend(['',f'**Total: {len(records)} × 332 = {len(records)*332:,} bits.**',
-       '', '## Notes', '- `activation_min`/`activation_max` reflect fused activation options (NONE, RELU, RELU_N1_TO_1, RELU6).',
+        lines.append(f'| `{name}` | {w} | [{high}:{high-w+1}] | {FIELD_DERIVATION[name]} |');high-=w
+    lines.extend(['',f'**Total: {len(records)} × {WORD_BITS} = {len(records)*WORD_BITS:,} bits.**',
+       '', '## Notes', '- Width derivations reflect the current 69-operation model and/or retained RTL interface widths.', '- Address arithmetic in the RTL must remain wide enough for full activation addresses.', '- `activation_min`/`activation_max` reflect fused activation options (NONE, RELU, RELU_N1_TO_1, RELU6).',
        '- `PAD` requires writing input zero-point into padded cells.',
        '- `MEAN` reduction count and requant multiplier are supplied separately by the MEAN module and requant ROM.', ''])
     Path(args.map).parent.mkdir(parents=True,exist_ok=True)
     Path(args.map).write_text('\n'.join(lines),encoding='utf-8')
-    print(f'Wrote {args.mem}: {len(records)} x 332-bit records')
+    print(f'Wrote {args.mem}: {len(records)} x {WORD_BITS}-bit records ({HEX_DIGITS} hex digits each)')
     print(f'Wrote {args.map}: {len(rows)} operator addresses')
 if __name__=='__main__':main()

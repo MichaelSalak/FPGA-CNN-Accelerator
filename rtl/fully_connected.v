@@ -24,30 +24,18 @@
 // can be hardcoded
 // connects all neurons into a single node (1280 inputs --> 1 output)
 module fully_connected(input clk, rst, start,
-                      // base addresses
                       input [17:0] input_base,
-                      input [17:0] weight_base,
-                      input [17:0] bias_base,
-                
-                      // activation memory
-                      input signed [7:0] input_data,
-                      output reg [17:0] input_addr,
-                      output reg input_r_en,
-                
-                      // weight memory
-                      input signed [7:0] weight_data,
-                      output reg [17:0] weight_addr,
-                      output reg weight_r_en,
-                
-                      // bias memory
+                      input [16:0] weight_base,
+                      input [11:0] bias_base, requant_base,
+                      input signed [7:0] input_data, weight_data,
                       input signed [31:0] bias_data,
-                      output reg [17:0] bias_addr,
-                      output reg bias_r_en,
-                
-                      // requantization parameters
                       input signed [31:0] multiplier,
                       input signed [7:0] shift,
-                
+                      output reg [17:0] input_addr,
+                      output reg [16:0] weight_addr,
+                      output reg [11:0] bias_addr, 
+                      output [11:0] requant_addr,
+                      output reg input_r_en, weight_r_en, bias_r_en, requant_r_en,
                       output reg signed [7:0] result,
                       output reg done
 );
@@ -85,6 +73,9 @@ module fully_connected(input clk, rst, start,
     reg requant_start;
     wire requant_done;
     wire signed [7:0] requant_result;
+    
+    // only 1 output channel
+    assign requant_addr = requant_base;
 
     requantize req(.clk(clk),
                    .rst(rst),
@@ -109,6 +100,7 @@ module fully_connected(input clk, rst, start,
             input_r_en <= 0;
             weight_r_en <= 0;
             bias_r_en <= 0;
+            requant_r_en <= 0;
             requant_start <= 0;
             done <= 0;
         end
@@ -117,6 +109,7 @@ module fully_connected(input clk, rst, start,
             input_r_en <= 0;
             weight_r_en <= 0;
             bias_r_en <= 0;
+            requant_r_en <= 0;
             requant_start <= 0;
             done <= 0;
 
@@ -133,6 +126,7 @@ module fully_connected(input clk, rst, start,
                 end
                 READ_BIAS: begin    // prepare bias to be read
                     bias_r_en <= 1;
+                    requant_r_en <= 1;  // fetch requant values simultaneously
                     state <= WAIT_BIAS;
                 end
                 WAIT_BIAS: begin    // extra cycle needed to perform sync read

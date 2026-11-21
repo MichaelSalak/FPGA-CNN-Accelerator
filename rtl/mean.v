@@ -23,13 +23,16 @@
 // only 1 mean operation occurs during inference, so dimensions can be hardcoded
 // averages the values across all pixels for each channel 
 module mean(input clk, rst, start,
-            // activation memory base addresses
+            // memory base addresses
             input [17:0] input_base,
+            input [11:0] requant_base,
             input [17:0] output_base,
         
             // fixed-point requantization parameters
             input signed [31:0] multiplier,
             input signed [7:0] shift,
+            output reg [11:0] requant_addr,
+            output reg requant_r_en,
         
             // input activation memory
             input signed [7:0] input_data,
@@ -84,6 +87,10 @@ module mean(input clk, rst, start,
     reg signed [31:0] acc;
     reg signed [8:0] corrected_input;
 
+    // registers to store requant params after intial read
+    reg signed [31:0] stored_multiplier;
+    reg signed [7:0] stored_shift;
+
     // requantization parameters
     reg requant_start;
     wire requant_done;
@@ -93,8 +100,8 @@ module mean(input clk, rst, start,
                    .rst(rst),
                    .start(requant_start),
                    .acc(acc),
-                   .multiplier(multiplier),
-                   .shift(shift),
+                   .multiplier(stored_multiplier),
+                   .shift(stored_shift),
                    .output_zero_point(OUTPUT_ZERO_POINT),
                    .activation_min(ACTIVATION_MIN),
                    .activation_max(ACTIVATION_MAX),
@@ -108,16 +115,21 @@ module mean(input clk, rst, start,
             position <= 0;
             channel_base_addr <= 0;
             input_addr <= 0;
+            requant_addr <= 0;
             output_addr <= 0;
             acc <= 0;
             input_r_en <= 0;
+            requant_r_en <= 0;
             output_w_en <= 0;
+            stored_multiplier <= 0;
+            stored_shift <= 0;
             output_data <= 0;
             requant_start <= 0;
             done <= 0;
         end else begin
             // default values
             input_r_en <= 0;
+            requant_r_en <= 0;
             output_w_en <= 0;
             requant_start <= 0;
             done <= 0;
@@ -129,6 +141,8 @@ module mean(input clk, rst, start,
                         position <= 0;
                         channel_base_addr <= input_base;
                         input_addr <= input_base;
+                        requant_addr <= requant_base;
+                        requant_r_en <= 1;  // perform single requant read here
                         output_addr <= output_base;
                         acc <= 0;
                         state <= INIT_CHANNEL;
@@ -138,9 +152,16 @@ module mean(input clk, rst, start,
                     position <= 0;
                     acc <= 0;
                     input_addr <= channel_base_addr;
+                    
                     state <= READ;
                 end
                 READ: begin // prepare operands to be read
+                    // store requantization parameters for the first channel
+                    if(channel == 0 && position == 0) begin
+                        stored_multiplier <= multiplier;
+                        stored_shift <= shift;
+                    end
+                
                     input_r_en <= 1;
                     state <= WAIT;
                 end

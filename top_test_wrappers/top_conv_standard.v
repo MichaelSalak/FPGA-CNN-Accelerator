@@ -60,28 +60,31 @@ module top_conv_standard(input clk, rst, start,
     wire [11:0] bias_addr;
     wire signed [31:0] bias_data;
     
+    wire requant_r_en;
+    wire [11:0] requant_addr;
+    wire signed [31:0] multiplier;
+    wire signed [7:0] shift;
+    
     // using base addresses of 0
-    localparam [17:0] INPUT_BASE  = 18'd0;
-    localparam [16:0] WEIGHT_BASE = 17'd0;
-    localparam [11:0] BIAS_BASE   = 12'd0;
-    localparam [17:0] OUTPUT_BASE = 18'd0;
+    localparam [17:0] INPUT_BASE   = 18'd0;
+    localparam [16:0] WEIGHT_BASE  = 17'd0;
+    localparam [11:0] BIAS_BASE    = 12'd0;
+    localparam [11:0] REQUANT_BASE = 12'd0;
+    localparam [17:0] OUTPUT_BASE  = 18'd0;
     
     // original standard_conv configuration: 120x160x3 -> 60x80x8,
     // 3x3 kernel, stride 2, SAME padding on bottom and right only
-    localparam [15:0] INPUT_HEIGHT    = 16'd120;
-    localparam [15:0] INPUT_WIDTH     = 16'd160;
-    localparam [15:0] INPUT_CHANNELS  = 16'd3;
-    localparam [15:0] OUTPUT_HEIGHT   = 16'd60;
-    localparam [15:0] OUTPUT_WIDTH    = 16'd80;
-    localparam [15:0] OUTPUT_CHANNELS = 16'd8;
+    localparam [6:0] INPUT_HEIGHT     = 7'd120;
+    localparam [7:0] INPUT_WIDTH      = 8'd160;
+    localparam [10:0] INPUT_CHANNELS  = 11'd3;
+    localparam [5:0] OUTPUT_HEIGHT    = 6'd60;
+    localparam [6:0] OUTPUT_WIDTH     = 7'd80;
+    localparam [10:0] OUTPUT_CHANNELS = 11'd8;
 
-    localparam [17:0] INPUT_ROW_STRIDE = 18'd480; // 160 * 3
-    localparam [17:0] OUTPUT_COL_STEP  = 18'd6;   // stride 2 * 3
-    localparam [17:0] OUTPUT_ROW_STEP  = 18'd960; // stride 2 * 480
+    localparam [12:0] INPUT_ROW_STRIDE = 13'd480; // 160 * 3
+    localparam [10:0] OUTPUT_COL_STEP  = 11'd6;   // stride 2 * 3
+    localparam [12:0] OUTPUT_ROW_STEP  = 13'd960; // stride 2 * 480
 
-    // hardcoded requantization parameters for now
-    wire signed [31:0] multiplier = 32'h40000000;
-    wire signed [7:0] shift = -8'sd2;
     wire signed [7:0] input_zero_point = -8'sd14;
     wire signed [7:0] output_zero_point = 8'sd3;
     wire signed [7:0] activation_min = -8'sd128;
@@ -92,7 +95,7 @@ module top_conv_standard(input clk, rst, start,
                       .start(start), 
                       .done(done),
                       .depthwise_mode(1'b0),
-                      .kernel_size(3'd3),
+                      .kernel_size(2'd3),
                       .stride_2(1'b1),
                       .pad_top(2'd0),
                       .pad_left(2'd0),
@@ -109,6 +112,9 @@ module top_conv_standard(input clk, rst, start,
                       .input_row_stride(INPUT_ROW_STRIDE),
                       .output_col_step(OUTPUT_COL_STEP),
                       .output_row_step(OUTPUT_ROW_STEP),
+                      .requant_base(REQUANT_BASE),
+                      .requant_addr(requant_addr),
+                      .requant_r_en(requant_r_en),
                       .multiplier(multiplier),
                       .shift(shift),
                       .input_zero_point(input_zero_point),
@@ -163,5 +169,13 @@ module top_conv_standard(input clk, rst, start,
                .r_en(bias_r_en),
                .addr(bias_addr),
                .data_out(bias_data));
+               
+    quant_param_mem #(.COUNT(8),
+                      .INIT_FILE("requant_8.mem")) 
+                   rm(.clk(clk),
+                      .r_en(requant_r_en),
+                      .addr(requant_addr),
+                      .multiplier(multiplier),
+                      .shift(shift));
 
 endmodule

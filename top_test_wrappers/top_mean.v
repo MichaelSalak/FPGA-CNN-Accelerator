@@ -23,11 +23,8 @@
 module top_mean(input clk, rst, start,
      // memory base addresses
     input [17:0] input_base,
+    input [11:0] requant_base,
     input [17:0] output_base,
-
-    // requantization parameters
-    input signed [31:0] multiplier,
-    input signed [7:0] shift,
 
     // testbench initialization interface
     input init_w_en,
@@ -57,11 +54,18 @@ module top_mean(input clk, rst, start,
     assign act_b_r_en = output_r_en;
     assign act_b_r_addr = output_r_addr;
     assign output_r_data = act_b_r_data;
+    
+    // requantization parameters
+    wire requant_r_en;
+    wire [11:0] requant_addr;
+    wire signed [31:0] multiplier;
+    wire signed [7:0] shift;
 
     mean mean_inst(.clk(clk),
                   .rst(rst),
                   .start(start),
                   .input_base(input_base),
+                  .requant_base(requant_base),
                   .output_base(output_base),
                   .input_data(act_a_r_data),
                   .input_addr(act_a_r_addr),
@@ -69,6 +73,8 @@ module top_mean(input clk, rst, start,
                   .output_addr(act_b_w_addr),
                   .output_data(act_b_w_data),
                   .output_w_en(act_b_w_en),
+                  .requant_r_en(requant_r_en),
+                  .requant_addr(requant_addr),
                   .multiplier(multiplier),
                   .shift(shift),
                   .done(done));
@@ -94,5 +100,13 @@ module top_mean(input clk, rst, start,
                             .w_addr(act_b_w_addr),
                             .w_data(act_b_w_data),
                             .r_data(act_b_r_data));
+
+    quant_param_mem #(.COUNT(8),
+                      .INIT_FILE("mean_requant.mem")) 
+                   rm(.clk(clk),
+                      .r_en(requant_r_en),
+                      .addr(requant_addr),
+                      .multiplier(multiplier),
+                      .shift(shift));
 
 endmodule

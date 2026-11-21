@@ -29,7 +29,7 @@ module top_residual_add_tb;
     reg rst = 1'b1;
     reg start = 1'b0;
     wire done;
-    reg [17:0] element_count = N;
+    reg [15:0] element_count = N;
 
     reg init_a_w_en = 0;
     reg [17:0] init_a_w_addr = 0;
@@ -44,12 +44,6 @@ module top_residual_add_tb;
     localparam signed [7:0] Z_A = -8'sd7;
     localparam signed [7:0] Z_B =  8'sd11;
     localparam signed [7:0] Z_OUT = 8'sd3;
-    localparam signed [31:0] M_A = 32'sh40000000;
-    localparam signed [7:0] S_A = -8'sd14;
-    localparam signed [31:0] M_B = 32'sh60000000;
-    localparam signed [7:0] S_B = -8'sd14;
-    localparam signed [31:0] M_OUT = 32'sh40000000;
-    localparam signed [7:0] S_OUT = -8'sd3;
     localparam signed [7:0] ACT_MIN = -8'sd128;
     localparam signed [7:0] ACT_MAX =  8'sd127;
 
@@ -75,12 +69,6 @@ module top_residual_add_tb;
         .input_a_zero_point(Z_A),
         .input_b_zero_point(Z_B),
         .output_zero_point(Z_OUT),
-        .input_a_multiplier(M_A),
-        .input_a_shift(S_A),
-        .input_b_multiplier(M_B),
-        .input_b_shift(S_B),
-        .output_multiplier(M_OUT),
-        .output_shift(S_OUT),
         .activation_min(ACT_MIN),
         .activation_max(ACT_MAX)
     );
