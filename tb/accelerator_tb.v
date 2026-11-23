@@ -31,7 +31,7 @@ module accelerator_tb;
     parameter integer MAX_LAYER_CYCLES = 50000000;
     parameter integer MAX_TOTAL_CYCLES = 1000000000;
     
-    parameter INPUT_FILE = "img1.mem"; // one 8-bit hex value per line
+    parameter INPUT_FILE = "img4.mem"; // one 8-bit hex value per line
     parameter integer STOP_AFTER_LAYER = 0; // 1-based, 0=all
 
     localparam [2:0] OP_CONV=3'd0, OP_ADD=3'd1, OP_PAD=3'd2,

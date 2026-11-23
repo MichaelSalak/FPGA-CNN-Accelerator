@@ -19,6 +19,23 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
+
+// current plans: 
+// - (likely) use vivado virtual input/output (VIO) to get result and done signals on board
+// - (maybe) use uart to populate initial buffer (rx) and output result (tx)
+
+// - create intial activation mem rom to populate initial buffer (for now)
+
+
+/* possible future revisions:
+   - create 1 global requant unit for functional units to share instead of 1 each
+   - incorporate PS preprocessing + camera to test as an actual camera trap on the board
+*/
+
+
+// *NOTE*: operation 0 (quantize from uINT8 to INT8) performed in software when 
+// writing to input image .mem file
+
 // CNN accelerator structural integration
 module accelerator #(parameter NUM_LAYERS = 69, // number of layers read from config mem (71 total ops)
                      parameter CONFIG_FILE = "layer_config.mem",
