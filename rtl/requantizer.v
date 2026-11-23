@@ -20,76 +20,81 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-// TFLite-compatible rounding is normally separated into two steps:
-// 1. a saturating rounding doubling high multiply, which reduces the 
-// multiplication result to approximately 32 bits
-// 2. a rounding division by a power of two, which applies the remaining 
-// right shift
-// positive shifts are applied to the accumulator before the high multiply
+// may need to break up critical path to meet timing
 
-// quantize 32 bit accumulator produced during convolution back to INT8
-module requantize(input clk, rst, start,
+
+// INT32 accumulator to INT8, using either TFLite-style single or double rounding
+// matches TFLite's behavior for each operation type:
+// single rounding operations: standard conv, pointwise conv, fully connected
+// double rounding operations: depthwise conv, residual add, mean
+module requantize(input clk, rst, start, double_rounding,
                   input signed [31:0] acc, multiplier,
                   input signed [7:0] shift,
-                  input signed [7:0] output_zero_point, 
+                  input signed [7:0] output_zero_point,
                   input signed [7:0] activation_min, activation_max,
                   output reg signed [7:0] result,
                   output reg done
 );
     reg [2:0] state;
 
-    localparam IDLE = 3'd0, 
-               SHIFT = 3'd1,      // shift accumulator
-               MULTIPLY = 3'd2,   // multiply accumulator by multiplier
-               RESCALE = 3'd3,    // apply shift and round
-               ADD = 3'd4,        // add zero point and apply clamp
-               DONE = 3'd5;       // prepare output 
+    localparam IDLE     = 3'd0,
+               SHIFT    = 3'd1,
+               MULTIPLY = 3'd2,
+               RESCALE  = 3'd3,
+               DONE     = 3'd4;
 
-    // register input parameters
+    // registered input parameters
     reg signed [31:0] acc_reg, multiplier_reg;
     reg signed [7:0] shift_reg;
     reg signed [7:0] zero_point_reg;
     reg signed [7:0] min_reg, max_reg;
+    reg double_rounding_reg;
 
     // intermediate results
-    reg signed [31:0] shifted_acc; 
+    reg signed [31:0] shifted_acc;
     reg signed [63:0] product;
-    reg signed [31:0] high_result;
     reg signed [31:0] scaled_result;
-    
-    // positive shifts are applied before multiplication
+
+    // positive shifts applied before multiplication
     wire [7:0] left_shift = (shift_reg > 0) ? shift_reg : 8'd0;
-    
-    // negative shifts are used for division
+
+    // negative shifts increase the total division exponent
     wire [7:0] right_shift = (shift_reg < 0) ? -shift_reg : 8'd0;
 
-    // TFLite-style rounding high multiply offset: 2^30 : 1- 2^30
-    wire signed [63:0] nudge = (product >= 0) ? 64'sd1073741824 : -64'sd1073741823;
-    wire signed [63:0] numerator = product + nudge;
+    // SINGLE ROUNDING
+    // round the full 64-bit product only once
+    wire [7:0] total_shift = 8'd31 + right_shift;
 
-    // divide by 2^31, truncating toward zero without using the division operator
-    wire signed [63:0] shifted_high = numerator >>> 31;
+    wire signed [63:0] single_offset = 64'sd1 <<< (total_shift - 1'b1);
 
-    wire has_remainder = |numerator[30:0]; // determine if non-zero using reduction OR
+    wire signed [63:0] single_rounded = (product + single_offset) >>> total_shift;
 
-    // add 1 to shifted high if there is a remainder for a negative product
-    wire signed [63:0] rounded_high = shifted_high +
-        ((numerator < 0) && has_remainder);
+    // DOUBLE ROUNDING
+    // stage 1: SaturatingRoundingDoublingHighMul
+    // rounds the high 32 bits of the Q31 multiplication
+    // signed division truncates toward zero, matching the
+    // reference high-multiply rounding behavior
+    wire signed [63:0] high_nudge = (product >= 0) ? 64'sd1073741824 : 64'sd1073741823;
 
-    // saturating high-multiply special case
-    wire multiply_overflow = (shifted_acc == 32'sh80000000) &&
-        (multiplier_reg == 32'sh80000000);
+    wire signed [63:0] high_rounded = (product + high_nudge) / 64'sd2147483648;
 
-    // second rounding stage
-    wire signed [31:0] divided_result;
+    wire signed [31:0] high_result = high_rounded[31:0];
 
-    rounding_divide u_rounding_divide(.value(high_result),
-                                      .exponent(right_shift),
-                                      .result(divided_result));
+    // stage 2: RoundingDivideByPOT
+    // rounds the high result after the remaining right shift
+    wire [31:0] mask = (right_shift == 0) ? 32'd0 :
+                       (32'hFFFFFFFF >> (32 - right_shift));
 
-    // sign-extend operands before adding
+    wire [31:0] remainder = high_result & mask;
+
+    wire [31:0] threshold = (mask >> 1) + ((high_result < 0) ? 32'd1 : 32'd0);
+
+    wire signed [31:0] double_rounded = (high_result >>> right_shift) +
+                                        ((remainder > threshold) ? 32'sd1 : 32'sd0);
+        
+    // extend before adding output zero point
     wire signed [32:0] offset_result = $signed({scaled_result[31], scaled_result}) +
-        $signed(zero_point_reg);
+                                       $signed(zero_point_reg);
 
     always @(posedge clk) begin
         if(rst) begin
@@ -102,8 +107,9 @@ module requantize(input clk, rst, start,
             zero_point_reg <= 0;
             min_reg <= 0;
             max_reg <= 0;
+            double_rounding_reg <= 0;
+            shifted_acc <= 0;
             product <= 0;
-            high_result <= 0;
             scaled_result <= 0;
         end else begin
             done <= 0;
@@ -117,7 +123,7 @@ module requantize(input clk, rst, start,
                         zero_point_reg <= output_zero_point;
                         min_reg <= activation_min;
                         max_reg <= activation_max;
-
+                        double_rounding_reg <= double_rounding;
                         state <= SHIFT;
                     end
                 end
@@ -130,15 +136,10 @@ module requantize(input clk, rst, start,
                     state <= RESCALE;
                 end
                 RESCALE: begin
-                    if(multiply_overflow)
-                        high_result <= 32'sh7FFFFFFF;
+                    if(double_rounding_reg)
+                        scaled_result <= double_rounded;
                     else
-                        high_result <= rounded_high[31:0];
-
-                    state <= ADD;
-                end
-                ADD: begin
-                    scaled_result <= divided_result;
+                        scaled_result <= single_rounded[31:0];
                     state <= DONE;
                 end
                 DONE: begin
@@ -157,59 +158,3 @@ module requantize(input clk, rst, start,
         end
     end
 endmodule
-
-
-
-
-
-// rounding divide used during requantization: 
-// rounds to nearest integer, halfway cases rounded up
-// uses integer shifts and remainder checking instead of division operator to avoid FP
-// result = round(value/(2^exponent))
-module rounding_divide(input signed [31:0] value,
-                       input [7:0] exponent,
-                       output reg signed [31:0] result
-);
-
-    reg [31:0] mask;
-    reg [31:0] remainder;
-    reg [31:0] threshold;
-    
-    reg signed [31:0] shifted_value;
-    reg signed [31:0] rounding_increment;
-
-    always @(*) begin
-        mask = 0;
-        remainder = 0;
-        threshold = 0;
-        shifted_value = 0;
-        rounding_increment = 0;
-        result = 0;
-
-        if(exponent == 0) begin
-            result = value;
-        end else if(exponent <= 31) begin
-            mask = (32'd1 << exponent) - 1; // create mask to isolate remainder
-            
-            // apply mask to extract remainder: any non zero bits after shift/division
-            remainder = value & mask;       
-
-            // rounds halfway cases away from zero
-            // threshold = 2^(n-1) - 1 for value >= 0
-            // threshold = 2^(n-1) for value < 0
-            threshold = (mask >> 1) + (value < 0);
-            
-            // signed arithmetic right shift ("divide" operation)
-            shifted_value = value >>> exponent;
-            
-            // explicitly convert comparison to signed 32-bit value
-            if(remainder > threshold)
-                rounding_increment = 32'sd1;
-
-            // round result away from 0 if needed (+1)
-            result = shifted_value + rounding_increment;
-        end
-    end
-endmodule
-
-

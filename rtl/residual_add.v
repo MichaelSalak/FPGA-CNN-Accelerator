@@ -359,12 +359,19 @@ module fixed_point_scale(input clk, rst, start,
     wire multiply_overflow = (shifted_value == 32'sh80000000) &&
         (multiplier_reg == 32'sh80000000);
 
-    // second rounding stage
-    wire signed [31:0] divided_result;
+    // stage 2: RoundingDivideByPOT
+    // rounds the high result after the remaining right shift
+    wire [31:0] mask = (right_shift == 0) ? 32'd0 :
+                       (32'hFFFFFFFF >> (32 - right_shift));
 
-    rounding_divide u_rounding_divide(.value(high_result),
-                                      .exponent(right_shift),
-                                      .result(divided_result));
+    wire [31:0] remainder = high_result & mask;
+
+    wire [31:0] threshold = (mask >> 1) + ((high_result < 0) ? 32'd1 : 32'd0);
+
+    // arithmetic right shift, followed by rounding correction
+    wire signed [31:0] divided_result =
+        (high_result >>> right_shift) +
+        ((remainder > threshold) ? 32'sd1 : 32'sd0);
 
     always @(posedge clk) begin
         if(rst) begin

@@ -4,3 +4,8 @@ This project is an FPGA based CNN accelerator for the Ecto-Trigger insect detect
 
 Ecto-Trigger Model: https://github.com/rossGardiner/ecto-trigger/
 Ecto-Trigger Research Paper: https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.70098
+
+images:
+1. https://unsplash.com/photos/a-butterfly-flies-over-grass-and-dirt-7nRcEs_iFEI
+2. https://commons.wikimedia.org/wiki/File:Tiny_insect_on_rain-soaked_leaf_-_1.jpg
+3. 
