@@ -21,14 +21,13 @@
 
 
 // current plans: 
-// - (likely) use vivado virtual input/output (VIO) to get result and done signals on board
-// - (maybe) use uart to populate initial buffer (rx) and output result (tx)
-
+// - use vivado virtual input/output (VIO) to get result and done signals on board
+// - create 1 global requant unit for functional units to share instead of 1 each
 // - create intial activation mem rom to populate initial buffer (for now)
 
 
 /* possible future revisions:
-   - create 1 global requant unit for functional units to share instead of 1 each
+   - use uart to populate initial buffer (rx) and output result (tx)
    - incorporate PS preprocessing + camera to test as an actual camera trap on the board
 */
 
@@ -45,7 +44,13 @@ module accelerator #(parameter NUM_LAYERS = 69, // number of layers read from co
                      parameter ACT_COUNT = 32768)
                     (input clk, rst, start,
                      output [7:0] result,
-                     output done, error
+                     output done, error,
+                     
+                     // external activation loading interface
+                     input loader_active,
+                     input [17:0] loader_w_addr,
+                     input signed [7:0] loader_w_data,
+                     input loader_w_en
 );
     localparam [2:0] OP_CONV = 3'd0, 
                      OP_ADD  = 3'd1, 
@@ -462,6 +467,10 @@ module accelerator #(parameter NUM_LAYERS = 69, // number of layers read from co
                              .c_r_data(c_r_data),
                              .c_w_addr(c_w_addr),
                              .c_w_data(c_w_data),
-                             .c_w_en(c_w_en));
+                             .c_w_en(c_w_en),
+                             .loader_active(loader_active),
+                             .loader_w_addr(loader_w_addr),
+                             .loader_w_data(loader_w_data),
+                             .loader_w_en(loader_w_en));
     
 endmodule

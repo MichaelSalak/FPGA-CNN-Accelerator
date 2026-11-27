@@ -49,7 +49,13 @@ module accelerator_tb;
         .WEIGHTS_FILE(WEIGHTS_FILE), .BIAS_FILE(BIAS_FILE),
         .REQUANT_FILE(REQUANT_FILE), .ACT_COUNT(ACT_COUNT)) dut (
         .clk(clk), .rst(rst), .start(start),
-        .result(result), .done(done), .error(error)
+        .result(result), .done(done), .error(error),
+        
+        // still using manual activation buffer initialization
+        .loader_active(1'b0),
+        .loader_w_addr(18'd0),
+        .loader_w_data(8'sd0),
+        .loader_w_en(1'b0)
     );
 
     reg [7:0] input_bytes [0:CAPACITY-1];

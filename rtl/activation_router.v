@@ -94,7 +94,13 @@ module activation_router #(parameter [2:0] OP_CONV = 3'd0,
                            input signed [7:0] c_r_data,
                            output reg [17:0] c_w_addr,
                            output reg signed [7:0] c_w_data,
-                           output reg c_w_en
+                           output reg c_w_en,
+                           
+                           // external activation loading interface
+                           input loader_active,
+                           input [17:0] loader_w_addr,
+                           input signed [7:0] loader_w_data,
+                           input loader_w_en
 );
     // first logical read port (all functional units)
     reg [17:0] read1_addr;
@@ -164,7 +170,7 @@ module activation_router #(parameter [2:0] OP_CONV = 3'd0,
         c_r_addr = 0; 
         c_r_en = 0;
         
-        if(read1_en) begin
+        if(read1_en && !loader_active) begin
             case(input_buffer)
                 2'd0: begin 
                     a_r_addr = read1_addr; 
@@ -181,7 +187,7 @@ module activation_router #(parameter [2:0] OP_CONV = 3'd0,
                 default: begin end
             endcase
         end
-        if(read2_en) begin
+        if(read2_en && !loader_active) begin
             case(input2_buffer)
                 2'd0: begin 
                     a_r_addr = read2_addr; 
@@ -212,7 +218,12 @@ module activation_router #(parameter [2:0] OP_CONV = 3'd0,
         c_w_data = 8'sd0; 
         c_w_en = 1'b0;
         
-        if(write_en) begin
+        // prioritze initial activation buffer loading
+        if(loader_active) begin
+            a_w_addr = loader_w_addr;
+            a_w_data = loader_w_data;
+            a_w_en = loader_w_en;
+        end else if(write_en) begin
             case(output_buffer)
                 2'd0: begin 
                     a_w_addr = write_addr; 
